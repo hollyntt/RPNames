@@ -170,7 +170,7 @@
           }
         }
       },
-      "Soggy_Pancake-CodeYapper/2.2.0": {
+      "Soggy_Pancake-CodeYapper/2.2.2": {
         "type": "package",
         "compile": {
           "lib/netstandard2.0/CodeTalker.dll": {}
@@ -905,14 +905,14 @@
         "monomod.utils.nuspec"
       ]
     },
-    "Soggy_Pancake-CodeYapper/2.2.0": {
-      "sha512": "ZiikqWPJPVQ7m4OBJQGK+lws8u+AFcpkZivnMvU1zbPrSiPzTWBdafPFpAUiNDV3pNCskg9LL0KccNDeM3bonQ==",
+    "Soggy_Pancake-CodeYapper/2.2.2": {
+      "sha512": "LMDFMhFIFv4rqK6mUk5W4BEYmXXccb6SLQ0wtM80YVNnJRy3nF0ojPiBxtATPBVIHTzbGflwlcIKOIqk03nXxg==",
       "type": "package",
-      "path": "soggy_pancake-codeyapper/2.2.0",
+      "path": "soggy_pancake-codeyapper/2.2.2",
       "files": [
         ".nupkg.metadata",
         "lib/netstandard2.0/CodeTalker.dll",
-        "soggy_pancake-codeyapper.2.2.0.nupkg.sha512",
+        "soggy_pancake-codeyapper.2.2.2.nupkg.sha512",
         "soggy_pancake-codeyapper.nuspec"
       ]
     },
@@ -2893,7 +2893,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/lib64/dotnet/sdk/9.0.112/RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/lib64/dotnet/sdk/9.0.113/RuntimeIdentifierGraph.json"
       }
     }
   }
