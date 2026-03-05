@@ -1,5 +1,17 @@
 ## Changelog
 ### 1.4.3
+**Fixed:**
+- The scroll position variable was being reset to 0 every frame inside the GUI function. I moved it to a class-level variable so it remembers where you scrolled.
+- "hex color sliders are syncing with others." bug.
+
+**Added:** 
+- Added Confirmation to "Clear All": Clicking "Clear All" now swaps the button to a "Confirm Clear? [Yes] / [No]" prompt to prevent accidents.
+- Custom Presets:
+    Added a "Save as Preset" button next to the Title text field.
+    Added a "Delete" (X) button next to custom presets in the list.
+    These save to the config file so they persist between restarts.
+
+### 1.4.3
 - **Fixed:** Implemented proper listener cleanup to prevent registration errors when re-hosting a lobby in the same game session.
 - **Fixed:** Corrected a critical issue where network listeners were being registered multiple times, causing errors and preventing title synchronization when joining or re-hosting a lobby. All listeners are now correctly registered only once at startup.
 

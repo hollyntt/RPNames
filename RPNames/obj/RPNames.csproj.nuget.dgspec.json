@@ -5,7 +5,7 @@
   },
   "projects": {
     "/run/media/soap/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj": {
-      "version": "1.4.3",
+      "version": "1.4.4",
       "restore": {
         "projectUniqueName": "/run/media/soap/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
         "projectName": "RPNames",
@@ -88,7 +88,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/lib64/dotnet/sdk/9.0.113/RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/lib64/dotnet/sdk/9.0.114/RuntimeIdentifierGraph.json"
         }
       }
     }

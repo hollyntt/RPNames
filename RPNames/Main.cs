@@ -16,7 +16,7 @@ using CodeTalker.Networking;
 using CodeTalker.Packets;
 using Newtonsoft.Json;
 using System.IO.Compression;
-using Mirror; // Added for NetworkServer check
+using Mirror; 
 
 // ============== NAMESPACE DEFINITIONS ==============
 namespace RPNames
@@ -129,6 +129,9 @@ namespace RPNames
         internal static bool IsReady = false;
         
         private static ConfigEntry<string> _characterProfilesJson;
+        // CUSTOM PRESETS CONFIG
+        private static ConfigEntry<string> _customPresetsJson;
+        
         internal Dictionary<int, CharacterTitleProfile> AllCharacterProfiles = new Dictionary<int, CharacterTitleProfile>();
         internal static int CurrentCharacterSlot = -1;
         
@@ -138,6 +141,14 @@ namespace RPNames
         private CharacterTitleProfile _uiEditingProfile = new CharacterTitleProfile();
         private bool _showTextAnimPicker, _showColoringPicker, _showBracketPicker, _showPronounBracketPicker, _showPresetPicker, _showPronounColoringPicker;
         private Vector2 _scrollPosition = Vector2.zero;
+        
+        private Vector2 _presetScrollPosition = Vector2.zero; 
+        
+        // FIX: Confirmation flag for Clear All
+        private bool _showClearConfirmation = false;
+        // FIX: Name buffer for saving presets
+        private string _newPresetName = "My New Style";
+
         internal static bool _isCodeTalkerLoaded = false;
         
         private static CharacterTitleProfile _copiedProfileBuffer = null;
@@ -146,11 +157,16 @@ namespace RPNames
         private Color _gradientStartColorCache, _gradientEndColorCache;
         private static readonly List<string> _presetTitles = new List<string>();
         
+        // UPDATED: Custom Presets is now a Dictionary to store the FULL profile
+        private static Dictionary<string, CharacterTitleProfile> _customPresets = new Dictionary<string, CharacterTitleProfile>();
+        
         internal enum TypewriterState { Typing, Blinking, Backspacing }
 
         private bool _showSingleColorPicker, _showGradientStartPicker, _showGradientEndPicker;
         private bool _showPronounSingleColorPicker, _showPronounGradientStartPicker, _showPronounGradientEndPicker;
-        private Color _uiEditingColor;
+        
+        // FIX: Removed global shared color variable to fix syncing bug
+        // private Color _uiEditingColor; 
         
         private enum MenuState { Closed, Opening, Open, Closing }
         private MenuState _menuState = MenuState.Closed;
@@ -166,9 +182,12 @@ namespace RPNames
             Log = Logger;
             _menuKey = Config.Bind("1. General", "Menu Key", KeyCode.F8, "The key to press to show/hide the settings menu.");
             _characterProfilesJson = Config.Bind("2. Data", "CharacterProfiles", "{}", "Stores all title profiles for all character slots in JSON format.");
-            
+            _customPresetsJson = Config.Bind("2. Data", "CustomPresetsFull", "{}", "Stores user-defined full title profiles.");
+
             LoadProfiles();
+            LoadCustomPresets(); 
             PopulatePresetTitles();
+            
             if (Type.GetType("CodeTalker.Networking.CodeTalkerNetwork, CodeTalker") != null)
             {
                 _isCodeTalkerLoaded = true;
@@ -200,6 +219,17 @@ namespace RPNames
 
         private void LoadProfiles() { try { var loadedProfiles = JsonConvert.DeserializeObject<Dictionary<int, CharacterTitleProfile>>(_characterProfilesJson.Value); if (loadedProfiles != null) AllCharacterProfiles = loadedProfiles; } catch { AllCharacterProfiles = new Dictionary<int, CharacterTitleProfile>(); } }
         private void SaveProfiles() { _characterProfilesJson.Value = JsonConvert.SerializeObject(AllCharacterProfiles, Formatting.Indented); Config.Save(); }
+        
+        private void LoadCustomPresets() 
+        { 
+            try 
+            { 
+                var loaded = JsonConvert.DeserializeObject<Dictionary<string, CharacterTitleProfile>>(_customPresetsJson.Value); 
+                if (loaded != null) _customPresets = loaded; 
+            } 
+            catch { _customPresets = new Dictionary<string, CharacterTitleProfile>(); } 
+        }
+        private void SaveCustomPresets() { _customPresetsJson.Value = JsonConvert.SerializeObject(_customPresets, Formatting.Indented); Config.Save(); }
 
         private void PopulatePresetTitles() { _presetTitles.Clear(); _presetTitles.AddRange(new[] { "The Explorer", "The Patient", "Dragonslayer", "Scarab Lord", "The Undying", "The Insane", "Grand Marshal", "High Warlord", "Arena Master", "Salty", "Chef", "Guardian of Cenarius", "Hand of A'dal", "Master Angler" }); }
         
@@ -355,9 +385,68 @@ namespace RPNames
                 
                 GUILayout.BeginHorizontal(); GUILayout.Label("Effect:", GUILayout.Width(120)); if (GUILayout.Button(curColoring.ToString())) showPicker = !showPicker; GUILayout.EndHorizontal();
                 if (showPicker) { string[] names = Enum.GetNames(typeof(ColoringType)); int sel = GUILayout.SelectionGrid((int)curColoring, names, 3); if (sel != (int)curColoring) { setColoring((ColoringType)sel); showPicker = false; showSingle = showGradS = showGradE = false; } }
-                Action<Action<string>> DrawColorPicker = (setter) => { GUILayout.BeginVertical(_modSkin.box); GUILayout.BeginHorizontal(); GUILayout.BeginVertical(GUILayout.ExpandWidth(true)); _uiEditingColor.r = GUILayout.HorizontalSlider(_uiEditingColor.r, 0, 1); _uiEditingColor.g = GUILayout.HorizontalSlider(_uiEditingColor.g, 0, 1); _uiEditingColor.b = GUILayout.HorizontalSlider(_uiEditingColor.b, 0, 1); GUILayout.EndVertical(); var oldBgColor = GUI.backgroundColor; GUI.backgroundColor = _uiEditingColor; GUILayout.Box("", new GUIStyle { normal = { background = Texture2D.whiteTexture } }, GUILayout.Width(40), GUILayout.Height(40)); GUI.backgroundColor = oldBgColor; GUILayout.EndHorizontal(); setter(ColorUtility.ToHtmlStringRGB(_uiEditingColor)); GUILayout.EndVertical(); };
-                if (curColoring == ColoringType.SingleColor) { GUILayout.BeginHorizontal(); GUILayout.Label("Hex Color", GUILayout.Width(80)); string hex = isForPronoun ? p.PronounSingleHexColor : p.SingleHexColor; setSingleHex(GUILayout.TextField(hex, 7)); if (GUILayout.Button("Pick", GUILayout.Width(50))) { showSingle = !showSingle; showGradS = showGradE = false; if (showSingle && !ColorUtility.TryParseHtmlString("#" + hex, out _uiEditingColor)) _uiEditingColor = Color.white; } GUILayout.EndHorizontal(); if (showSingle) DrawColorPicker(setSingleHex); }
-                if (curColoring == ColoringType.Gradient) { bool anim = isForPronoun ? p.PronounAnimateGradient : p.AnimateGradient; setAnimGrad(GUILayout.Toggle(anim, "Animate Gradient")); if(anim) { float s = isForPronoun ? p.PronounColorAnimationSpeed : p.ColorAnimationSpeed; GUILayout.Label($"Color Speed: {s:F1}"); setColorSpeed(GUILayout.HorizontalSlider(s, 0.1f, 5f)); } float gs = isForPronoun ? p.PronounGradientSpread : p.GradientSpread; GUILayout.Label($"Gradient Spread: {gs:F1}"); setGradSpread(GUILayout.HorizontalSlider(gs, 1f, 50f)); GUI.enabled = !anim; GUILayout.BeginHorizontal(); GUILayout.Label("Start", GUILayout.Width(50)); string sHex = isForPronoun ? p.PronounGradientStartColor : p.GradientStartColor; setGradStart(GUILayout.TextField(sHex, 7)); if (GUILayout.Button("Pick", GUILayout.Width(50))) { showGradS = !showGradS; showSingle = showGradE = false; if (showGradS && !ColorUtility.TryParseHtmlString("#" + sHex, out _uiEditingColor)) _uiEditingColor = Color.white; } GUILayout.EndHorizontal(); if (showGradS) DrawColorPicker(setGradStart); GUILayout.BeginHorizontal(); GUILayout.Label("End", GUILayout.Width(50)); string eHex = isForPronoun ? p.PronounGradientEndColor : p.GradientEndColor; setGradEnd(GUILayout.TextField(eHex, 7)); if (GUILayout.Button("Pick", GUILayout.Width(50))) { showGradE = !showGradE; showSingle = showGradS = false; if (showGradE && !ColorUtility.TryParseHtmlString("#" + eHex, out _uiEditingColor)) _uiEditingColor = Color.white; } GUILayout.EndHorizontal(); if (showGradE) DrawColorPicker(setGradEnd); GUI.enabled = true; }
+                
+                // FIX: DECOUPLED COLOR PICKER LOGIC
+                // Pass the current hex string to DrawColorPicker so it can calculate local slider values
+                Action<string, Action<string>> DrawColorPicker = (currentHex, setter) => 
+                { 
+                    if (!ColorUtility.TryParseHtmlString("#" + currentHex, out Color c)) c = Color.white;
+                    
+                    GUILayout.BeginVertical(_modSkin.box); 
+                    GUILayout.BeginHorizontal(); 
+                    GUILayout.BeginVertical(GUILayout.ExpandWidth(true)); 
+                    
+                    float newR = GUILayout.HorizontalSlider(c.r, 0, 1); 
+                    float newG = GUILayout.HorizontalSlider(c.g, 0, 1); 
+                    float newB = GUILayout.HorizontalSlider(c.b, 0, 1); 
+                    
+                    GUILayout.EndVertical(); 
+                    
+                    var oldBgColor = GUI.backgroundColor; 
+                    GUI.backgroundColor = c; 
+                    GUILayout.Box("", new GUIStyle { normal = { background = Texture2D.whiteTexture } }, GUILayout.Width(40), GUILayout.Height(40)); 
+                    GUI.backgroundColor = oldBgColor; 
+                    GUILayout.EndHorizontal(); 
+                    
+                    if (newR != c.r || newG != c.g || newB != c.b)
+                    {
+                        c.r = newR; c.g = newG; c.b = newB;
+                        setter(ColorUtility.ToHtmlStringRGB(c)); 
+                    }
+                    GUILayout.EndVertical(); 
+                };
+
+                if (curColoring == ColoringType.SingleColor) 
+                { 
+                    GUILayout.BeginHorizontal(); 
+                    GUILayout.Label("Hex Color", GUILayout.Width(80)); 
+                    string hex = isForPronoun ? p.PronounSingleHexColor : p.SingleHexColor; 
+                    setSingleHex(GUILayout.TextField(hex, 7)); 
+                    if (GUILayout.Button("Pick", GUILayout.Width(50))) { showSingle = !showSingle; showGradS = showGradE = false; } 
+                    GUILayout.EndHorizontal(); 
+                    if (showSingle) DrawColorPicker(hex, setSingleHex); 
+                }
+                if (curColoring == ColoringType.Gradient) 
+                { 
+                    bool anim = isForPronoun ? p.PronounAnimateGradient : p.AnimateGradient; 
+                    setAnimGrad(GUILayout.Toggle(anim, "Animate Gradient")); 
+                    if(anim) { float s = isForPronoun ? p.PronounColorAnimationSpeed : p.ColorAnimationSpeed; GUILayout.Label($"Color Speed: {s:F1}"); setColorSpeed(GUILayout.HorizontalSlider(s, 0.1f, 5f)); } 
+                    float gs = isForPronoun ? p.PronounGradientSpread : p.GradientSpread; GUILayout.Label($"Gradient Spread: {gs:F1}"); setGradSpread(GUILayout.HorizontalSlider(gs, 1f, 50f)); 
+                    GUI.enabled = !anim; 
+                    GUILayout.BeginHorizontal(); GUILayout.Label("Start", GUILayout.Width(50)); 
+                    string sHex = isForPronoun ? p.PronounGradientStartColor : p.GradientStartColor; 
+                    setGradStart(GUILayout.TextField(sHex, 7)); 
+                    if (GUILayout.Button("Pick", GUILayout.Width(50))) { showGradS = !showGradS; showSingle = showGradE = false; } 
+                    GUILayout.EndHorizontal(); 
+                    if (showGradS) DrawColorPicker(sHex, setGradStart); 
+                    GUILayout.BeginHorizontal(); GUILayout.Label("End", GUILayout.Width(50)); 
+                    string eHex = isForPronoun ? p.PronounGradientEndColor : p.GradientEndColor; 
+                    setGradEnd(GUILayout.TextField(eHex, 7)); 
+                    if (GUILayout.Button("Pick", GUILayout.Width(50))) { showGradE = !showGradE; showSingle = showGradS = false; } 
+                    GUILayout.EndHorizontal(); 
+                    if (showGradE) DrawColorPicker(eHex, setGradEnd); 
+                    GUI.enabled = true; 
+                }
                 if (curColoring == ColoringType.Wave || curColoring == ColoringType.Rainbow) { float s = isForPronoun ? p.PronounColorAnimationSpeed : p.ColorAnimationSpeed; GUILayout.Label($"Color Speed: {s:F1}"); setColorSpeed(GUILayout.HorizontalSlider(s, 0.1f, 5f)); }
                 if (curColoring == ColoringType.Wave || curColoring == ColoringType.StaticRainbow) { float s = isForPronoun ? p.PronounRainbowWaveSpread : p.RainbowWaveSpread; GUILayout.Label($"Wave Spread: {s:F1}"); setWaveSpread(GUILayout.HorizontalSlider(s, 5f, 50f)); }
                 if (curColoring == ColoringType.Gradient || curColoring == ColoringType.SingleColor) GUILayout.Label("(RRGGBB format, no #)", new GUIStyle(_modSkin.label) { fontStyle = FontStyle.Italic, normal = { textColor = Color.gray } });
@@ -365,8 +454,60 @@ namespace RPNames
 
             GUILayout.Label("Title", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold });
             _uiEditingProfile.Title = GUILayout.TextField(_uiEditingProfile.Title, 50);
+            
+            // ============== PRESET UI ==============
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Name:", GUILayout.Width(45));
+            _newPresetName = GUILayout.TextField(_newPresetName);
+            if (GUILayout.Button("Save Preset")) 
+            {
+                if (!string.IsNullOrEmpty(_newPresetName))
+                {
+                    // Clone the current profile to save it
+                    var clone = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile));
+                    if (_customPresets.ContainsKey(_newPresetName)) _customPresets[_newPresetName] = clone;
+                    else _customPresets.Add(_newPresetName, clone);
+                    SaveCustomPresets();
+                }
+            }
+            GUILayout.EndHorizontal();
+            
             if (GUILayout.Button("Select a Preset")) _showPresetPicker = !_showPresetPicker;
-            if (_showPresetPicker) { Vector2 presetScroll = Vector2.zero; presetScroll = GUILayout.BeginScrollView(presetScroll, GUILayout.Height(100)); foreach (string preset in _presetTitles) if (GUILayout.Button(preset)) { _uiEditingProfile.Title = preset; _showPresetPicker = false; } GUILayout.EndScrollView(); }
+            if (_showPresetPicker) 
+            { 
+                _presetScrollPosition = GUILayout.BeginScrollView(_presetScrollPosition, GUILayout.Height(150)); 
+                
+                GUILayout.Label("- Default Presets (Text Only) -");
+                foreach (string preset in _presetTitles) 
+                {
+                    if (GUILayout.Button(preset)) { _uiEditingProfile.Title = preset; _showPresetPicker = false; } 
+                }
+                
+                if (_customPresets.Count > 0)
+                {
+                    GUILayout.Label("- Custom Presets (Full Style) -");
+                    List<string> toRemove = new List<string>();
+                    foreach (var entry in _customPresets)
+                    {
+                        GUILayout.BeginHorizontal();
+                        if (GUILayout.Button(entry.Key)) 
+                        { 
+                            // Deep copy load to avoid reference issues
+                            _uiEditingProfile = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(entry.Value)); 
+                            _showPresetPicker = false; 
+                        }
+                        if (GUILayout.Button("X", GUILayout.Width(25))) { toRemove.Add(entry.Key); }
+                        GUILayout.EndHorizontal();
+                    }
+                    if (toRemove.Count > 0) 
+                    {
+                        foreach(var r in toRemove) _customPresets.Remove(r);
+                        SaveCustomPresets();
+                    }
+                }
+                GUILayout.EndScrollView(); 
+            }
+            // =================================================
             
             GUILayout.Space(10); GUILayout.Label("--- Pronouns ---", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold });
             _uiEditingProfile.ShowPronouns = GUILayout.Toggle(_uiEditingProfile.ShowPronouns, " Show Pronouns");
@@ -397,8 +538,29 @@ namespace RPNames
             
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal(); if (GUILayout.Button("Copy")) { _copiedProfileBuffer = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile)); } GUI.enabled = _copiedProfileBuffer != null; if (GUILayout.Button("Paste")) { if (_copiedProfileBuffer != null) { _uiEditingProfile = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_copiedProfileBuffer)); } } GUI.enabled = true; GUILayout.EndHorizontal();
+            
             if (GUILayout.Button("Set & Save")) { AllCharacterProfiles[CurrentCharacterSlot] = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile)); SaveProfiles(); var currentProfile = AllCharacterProfiles[CurrentCharacterSlot]; UpdateGradientCache(currentProfile); SendTitleUpdate(currentProfile); _menuState = MenuState.Closing; }
-            if (GUILayout.Button("Clear All")) { if (AllCharacterProfiles.ContainsKey(CurrentCharacterSlot)) AllCharacterProfiles.Remove(CurrentCharacterSlot); SaveProfiles(); SendTitleUpdate(null); LoadUIFromProfile(CurrentCharacterSlot); }
+            
+            if (_showClearConfirmation)
+            {
+                GUILayout.Label("Are you sure?", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.yellow } });
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("YES, CLEAR")) 
+                { 
+                    if (AllCharacterProfiles.ContainsKey(CurrentCharacterSlot)) AllCharacterProfiles.Remove(CurrentCharacterSlot); 
+                    SaveProfiles(); 
+                    SendTitleUpdate(null); 
+                    LoadUIFromProfile(CurrentCharacterSlot); 
+                    _showClearConfirmation = false; 
+                }
+                if (GUILayout.Button("CANCEL")) { _showClearConfirmation = false; }
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                if (GUILayout.Button("Clear All")) { _showClearConfirmation = true; }
+            }
+            
             GUI.DragWindow();
         }
     }
