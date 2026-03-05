@@ -1,8 +1,9 @@
 ## Changelog
-### 1.4.3
+### 1.4.x - x.x.5
 **Fixed:**
 - The scroll position variable was being reset to 0 every frame inside the GUI function. I moved it to a class-level variable so it remembers where you scrolled.
 - "hex color sliders are syncing with others." bug.
+- Changelog error
 
 **Added:** 
 - Added Confirmation to "Clear All": Clicking "Clear All" now swaps the button to a "Confirm Clear? [Yes] / [No]" prompt to prevent accidents.
