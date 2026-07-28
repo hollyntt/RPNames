@@ -1,16 +1,24 @@
 ## Changelog
+### 1.4.6
+**Fixed:**
+- Tags for everyone already on the server could disappear and never come back if you disconnected and reconnected without fully restarting the game (dedicated servers only). The full sync request now also fires off the `IN_GAME` condition change instead of relying solely on gaining player authority, with a backup poll check as well, so a reconnect can't slip through uncaught anymore.
+- Stale profile data no longer lingers forever for players who've already left — a player's entry is now cleaned up the moment their object is destroyed instead of sitting around as dead weight.
+
+**Debug:**
+- Added logging around the full-sync request/response chain so a failure here actually shows up in the log instead of just... nothing.
+
 ### 1.4.x - x.x.5
 **Fixed:**
 - The scroll position variable was being reset to 0 every frame inside the GUI function. I moved it to a class-level variable so it remembers where you scrolled.
 - "hex color sliders are syncing with others." bug.
 - Changelog error
 
-**Added:** 
+**Added:**
 - Added Confirmation to "Clear All": Clicking "Clear All" now swaps the button to a "Confirm Clear? [Yes] / [No]" prompt to prevent accidents.
 - Custom Presets:
-    Added a "Save as Preset" button next to the Title text field.
-    Added a "Delete" (X) button next to custom presets in the list.
-    These save to the config file so they persist between restarts.
+  Added a "Save as Preset" button next to the Title text field.
+  Added a "Delete" (X) button next to custom presets in the list.
+  These save to the config file so they persist between restarts.
 
 ### 1.4.3
 - **Fixed:** Implemented proper listener cleanup to prevent registration errors when re-hosting a lobby in the same game session.

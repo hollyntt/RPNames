@@ -249,6 +249,7 @@ namespace RPNames
         {
             if (packet is Packets.FullSyncPacket p)
             {
+                Log.LogInfo($"[RPNames] Received full-sync with {p.AllProfiles?.Count ?? 0} profile(s).");
                 var localNetIds = HarmonyPatches.PlayerProfiles.Keys.ToList();
                 foreach (var localId in localNetIds) if (!p.AllProfiles.ContainsKey(localId)) ApplyProfileUpdate(localId, null);
                 foreach (var entry in p.AllProfiles) ApplyProfileUpdate(entry.Key, entry.Value);
@@ -279,6 +280,7 @@ namespace RPNames
             if (packet is Packets.RequestAllTitlesPacket) 
             {
                 var syncPacket = new Packets.FullSyncPacket(HarmonyPatches.PlayerProfiles);
+                Log.LogInfo($"[RPNames] Replying to full-sync request from {header.SenderID} with {HarmonyPatches.PlayerProfiles.Count} profile(s).");
                 CodeTalkerNetwork.SendNetworkPacket(header.SenderID, syncPacket, Compressors.CompressionType.GZip);
             } 
         }
@@ -291,10 +293,31 @@ namespace RPNames
             ApplyProfileUpdate(Player._mainPlayer.netId, profile);
         }
         
-        public static void RequestFullTitleSync() { if (_isCodeTalkerLoaded) CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket()); }
+        public static void RequestFullTitleSync() 
+        { 
+            if (_isCodeTalkerLoaded) 
+            {
+                Log.LogInfo("[RPNames] Sending full-sync request to server.");
+                CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket());
+            }
+        }
+
+        private bool _pollWasInGame = false;
 
         private void Update()
         {
+            // Fallback for OnGameConditionChange_Postfix: poll directly in case that patch gets
+            // missed on some entry path (patch ordering with other mods, exceptions earlier in
+            // the postfix chain, etc.). RequestFullTitleSync/SendTitleUpdate are idempotent, so
+            // firing this alongside the Harmony patch is harmless if both catch the transition.
+            bool isInGameNow = Player._mainPlayer != null && Player._mainPlayer._currentGameCondition == GameCondition.IN_GAME;
+            if (isInGameNow && !_pollWasInGame)
+            {
+                Log.LogInfo("[RPNames] Detected IN_GAME via poll fallback.");
+                RequestFullTitleSync();
+            }
+            _pollWasInGame = isInGameNow;
+
             switch (_menuState) { case MenuState.Opening: _animationProgress = Mathf.Clamp01(_animationProgress + Time.unscaledDeltaTime / AnimationDuration); if (_animationProgress >= 1f) _menuState = MenuState.Open; break; case MenuState.Closing: _animationProgress = Mathf.Clamp01(_animationProgress - Time.unscaledDeltaTime / AnimationDuration); if (_animationProgress <= 0f) _menuState = MenuState.Closed; break; }
             if (Input.GetKeyDown(_menuKey.Value)) { if (_menuState == MenuState.Open || _menuState == MenuState.Opening) { _menuState = MenuState.Closing; _showTextAnimPicker = _showColoringPicker = _showBracketPicker = _showPresetPicker = _showPronounBracketPicker = _showPronounColoringPicker = false; } else { _menuState = MenuState.Opening; LoadUIFromProfile(CurrentCharacterSlot >= 0 ? CurrentCharacterSlot : 0); } }
 
@@ -574,7 +597,7 @@ namespace RPNames
         private static readonly FieldInfo _globalNicknameTextMeshField = AccessTools.Field(typeof(Player), "_globalNicknameTextMesh");
         
         [HarmonyPostfix, HarmonyPatch(typeof(Player), "OnGameConditionChange")]
-        private static void OnGameConditionChange_Postfix(Player __instance, GameCondition _newCondition) { if (__instance != Player._mainPlayer) return; Main.IsReady = (_newCondition == GameCondition.IN_GAME); if (Main.IsReady) { Main.CurrentCharacterSlot = ProfileDataManager._current.SelectedFileIndex; if (Main.instance.AllCharacterProfiles.TryGetValue(Main.CurrentCharacterSlot, out var profile)) { Main.instance.UpdateGradientCache(profile); Main.SendTitleUpdate(profile); } } }
+        private static void OnGameConditionChange_Postfix(Player __instance, GameCondition _newCondition) { if (__instance != Player._mainPlayer) return; Main.IsReady = (_newCondition == GameCondition.IN_GAME); if (Main.IsReady) { Main.CurrentCharacterSlot = ProfileDataManager._current.SelectedFileIndex; if (Main.instance.AllCharacterProfiles.TryGetValue(Main.CurrentCharacterSlot, out var profile)) { Main.instance.UpdateGradientCache(profile); Main.SendTitleUpdate(profile); } Main.RequestFullTitleSync(); } }
         
         [HarmonyPostfix, HarmonyPatch(typeof(AtlyssNetworkManager), "OnStopClient")]
         private static void OnStopClient_Postfix() 
@@ -584,6 +607,20 @@ namespace RPNames
             PlayerProfiles.Clear(); 
             CurrentPlayerTitles.Clear(); 
             Main.AllPlayerAnimators.Clear();
+        }
+
+        // Marker component with its own OnDestroy — Unity guarantees this fires when the
+        // GameObject is destroyed, unlike trying to Harmony-patch Player.OnDestroy directly
+        // (which only works if Player itself declares that method, which it may not).
+        private class PlayerCleanupMarker : MonoBehaviour
+        {
+            public uint NetId;
+            private void OnDestroy()
+            {
+                PlayerProfiles.Remove(NetId);
+                CurrentPlayerTitles.Remove(NetId);
+                Main.AllPlayerAnimators.Remove(NetId);
+            }
         }
         
         [HarmonyPostfix, HarmonyPatch(typeof(Player), "OnStartAuthority")]
@@ -598,6 +635,12 @@ namespace RPNames
         [HarmonyPostfix, HarmonyPatch(typeof(Player), "Handle_ClientParameters")]
         private static void Handle_ClientParameters_Postfix(Player __instance)
         {
+            if (__instance.GetComponent<PlayerCleanupMarker>() == null)
+            {
+                var marker = __instance.gameObject.AddComponent<PlayerCleanupMarker>();
+                marker.NetId = __instance.netId;
+            }
+
             if (_globalNicknameTextMeshField.GetValue(__instance) is not TextMeshPro textMesh) return;
             if (!textMesh.richText) textMesh.richText = true;
             
