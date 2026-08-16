@@ -1,4 +1,8 @@
 ## Changelog
+### 1.4.7
+**Fixed:**
+- Game would lock up at spawn if launched modded without Steam initialized. RPNames' networking calls would throw repeatedly (once per frame, forever) when Steamworks wasn't available, instead of failing gracefully — this now logs a single warning and disables networked titles for that session instead of hammering the game with exceptions. (Bug found by Xesy)
+
 ### 1.4.6
 **Fixed:**
 - Tags for everyone already on the server could disappear and never come back if you disconnected and reconnected without fully restarting the game (dedicated servers only). The full sync request now also fires off the `IN_GAME` condition change instead of relying solely on gaining player authority, with a backup poll check as well, so a reconnect can't slip through uncaught anymore.

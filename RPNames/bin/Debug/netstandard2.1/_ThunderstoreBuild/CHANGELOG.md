@@ -1,8 +1,12 @@
 ## Changelog
+### 1.4.7
+**Fixed:**
+- Game would lock up at spawn if launched modded without Steam initialized. RPNames' networking calls would throw repeatedly (once per frame, forever) when Steamworks wasn't available, instead of failing gracefully — this now logs a single warning and disables networked titles for that session instead of hammering the game with exceptions. (Bug found by Xesy)
+
 ### 1.4.6
 **Fixed:**
 - Tags for everyone already on the server could disappear and never come back if you disconnected and reconnected without fully restarting the game (dedicated servers only). The full sync request now also fires off the `IN_GAME` condition change instead of relying solely on gaining player authority, with a backup poll check as well, so a reconnect can't slip through uncaught anymore.
-- Stale profile data no longer lingers forever for players who've already left — a player's entry is now cleaned up the moment their object is destroyed instead of sitting around as dead weight.
+- Stale profile data no longer lingers forever for players who've already left — a player's entry is now cleaned up the moment their object is destroyed instead of sitting around as dead weight. (Initial version of this fix relied on a Harmony patch that may not have actually applied — reworked it to use a small marker component instead so it's guaranteed to fire.)
 
 **Debug:**
 - Added logging around the full-sync request/response chain so a failure here actually shows up in the log instead of just... nothing.

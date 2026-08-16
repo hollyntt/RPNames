@@ -274,6 +274,31 @@ namespace RPNames
             }
         }
         
+        private static bool _networkSendWarningLogged = false;
+
+        /* All outbound CodeTalker sends should go through this. If Steamworks isn't initialized
+        yet (e.g. game launched modded without Steam running), SendNetworkPacket throws
+        InvalidOperationException and since this can get called from a per-frame poll
+        fallback (Update()), an uncaught throw there repeats every single frame forever,
+        spamming the log and hitching/locking the game. Catch it, warn once, and give up */
+        private static bool TrySend(System.Action send)
+        {
+            try
+            {
+                send();
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                if (!_networkSendWarningLogged)
+                {
+                    Log.LogWarning($"[RPNames] Couldn't send a network packet (Steamworks may not be initialized) — networked titles will be disabled until this resolves. {ex.GetType().Name}: {ex.Message}");
+                    _networkSendWarningLogged = true;
+                }
+                return false;
+            }
+        }
+        
         public static void OnSyncRequest(PacketHeader header, PacketBase packet) 
         { 
             if (!NetworkServer.active) return;
@@ -281,7 +306,7 @@ namespace RPNames
             {
                 var syncPacket = new Packets.FullSyncPacket(HarmonyPatches.PlayerProfiles);
                 Log.LogInfo($"[RPNames] Replying to full-sync request from {header.SenderID} with {HarmonyPatches.PlayerProfiles.Count} profile(s).");
-                CodeTalkerNetwork.SendNetworkPacket(header.SenderID, syncPacket, Compressors.CompressionType.GZip);
+                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(header.SenderID, syncPacket, Compressors.CompressionType.GZip));
             } 
         }
         
@@ -289,16 +314,16 @@ namespace RPNames
         { 
             if (Player._mainPlayer == null) return;
             var packet = new Packets.UpdateTitleProfilePacket(profile);
-            CodeTalkerNetwork.SendNetworkPacket(packet);
-            ApplyProfileUpdate(Player._mainPlayer.netId, profile);
+            if (TrySend(() => CodeTalkerNetwork.SendNetworkPacket(packet)))
+                ApplyProfileUpdate(Player._mainPlayer.netId, profile);
         }
         
         public static void RequestFullTitleSync() 
         { 
-            if (_isCodeTalkerLoaded) 
+            if (_isCodeTalkerLoaded && !_networkSendWarningLogged) 
             {
                 Log.LogInfo("[RPNames] Sending full-sync request to server.");
-                CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket());
+                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket()));
             }
         }
 
@@ -306,10 +331,10 @@ namespace RPNames
 
         private void Update()
         {
-            // Fallback for OnGameConditionChange_Postfix: poll directly in case that patch gets
-            // missed on some entry path (patch ordering with other mods, exceptions earlier in
-            // the postfix chain, etc.). RequestFullTitleSync/SendTitleUpdate are idempotent, so
-            // firing this alongside the Harmony patch is harmless if both catch the transition.
+            /* Fallback for OnGameConditionChange_Postfix: poll directly in case that patch gets
+            missed on some entry path (patch ordering with other mods, exceptions earlier in
+            the postfix chain, etc.). RequestFullTitleSync/SendTitleUpdate are idempotent, so
+            firing this alongside the Harmony patch is harmless if both catch the transition. */
             bool isInGameNow = Player._mainPlayer != null && Player._mainPlayer._currentGameCondition == GameCondition.IN_GAME;
             if (isInGameNow && !_pollWasInGame)
             {
@@ -608,10 +633,7 @@ namespace RPNames
             CurrentPlayerTitles.Clear(); 
             Main.AllPlayerAnimators.Clear();
         }
-
-        // Marker component with its own OnDestroy — Unity guarantees this fires when the
-        // GameObject is destroyed, unlike trying to Harmony-patch Player.OnDestroy directly
-        // (which only works if Player itself declares that method, which it may not).
+        
         private class PlayerCleanupMarker : MonoBehaviour
         {
             public uint NetId;
