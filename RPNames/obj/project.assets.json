@@ -2807,20 +2807,20 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Hollyn\\.nuget\\packages\\": {}
+    "/home/hollyn/.nuget/packages/": {}
   },
   "project": {
-    "version": "1.4.6",
+    "version": "1.5.0",
     "restore": {
-      "projectUniqueName": "D:\\Documents\\CODE\\Ours\\RoleplayTitles\\RPNames\\RPNames.csproj",
+      "projectUniqueName": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
       "projectName": "RPNames",
-      "projectPath": "D:\\Documents\\CODE\\Ours\\RoleplayTitles\\RPNames\\RPNames.csproj",
-      "packagesPath": "C:\\Users\\Hollyn\\.nuget\\packages\\",
-      "outputPath": "D:\\Documents\\CODE\\Ours\\RoleplayTitles\\RPNames\\obj\\",
+      "projectPath": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
+      "packagesPath": "/home/hollyn/.nuget/packages/",
+      "outputPath": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "D:\\Documents\\CODE\\Ours\\RoleplayTitles\\NuGet.Config",
-        "C:\\Users\\Hollyn\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/nuget.config",
+        "/home/hollyn/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "netstandard2.1"
@@ -2832,7 +2832,6 @@
       },
       "frameworks": {
         "netstandard2.1": {
-          "framework": "netstandard2.1",
           "targetAlias": "netstandard2.1",
           "projectReferences": {}
         }
@@ -2847,11 +2846,10 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.300"
+      "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
       "netstandard2.1": {
-        "framework": "netstandard2.1",
         "targetAlias": "netstandard2.1",
         "dependencies": {
           "BepInEx.Analyzers": {
@@ -2889,12 +2887,18 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "NETStandard.Library.Ref",
+            "version": "[2.1.0, 2.1.0]"
+          }
+        ],
         "frameworkReferences": {
           "NETStandard.Library": {
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.315\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.112/RuntimeIdentifierGraph.json"
       }
     }
   }

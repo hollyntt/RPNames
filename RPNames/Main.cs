@@ -4,7 +4,9 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.UI;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -131,6 +133,15 @@ namespace RPNames
         private static ConfigEntry<string> _characterProfilesJson;
         // CUSTOM PRESETS CONFIG
         private static ConfigEntry<string> _customPresetsJson;
+        private ConfigEntry<bool> _autoSetGlobalNameFromSteam = null!;
+        private ConfigEntry<string> _savedOriginalGlobalNickname = null!;
+        private ConfigEntry<bool> _hasSavedOriginalGlobalNickname = null!;
+        private ConfigEntry<string> _appliedSteamGlobalNickname = null!;
+        private readonly Dictionary<Player, string> _originalGlobalNicknames = new Dictionary<Player, string>();
+        private readonly Dictionary<Player, string> _appliedSteamPlayerNicknames = new Dictionary<Player, string>();
+        private readonly HashSet<ulong> _requestedSteamUsers = new HashSet<ulong>();
+        private float _globalNameRefreshTimer;
+        private bool _steamNameUnavailableWarningLogged;
         
         internal Dictionary<int, CharacterTitleProfile> AllCharacterProfiles = new Dictionary<int, CharacterTitleProfile>();
         internal static int CurrentCharacterSlot = -1;
@@ -181,6 +192,10 @@ namespace RPNames
             instance = this;
             Log = Logger;
             _menuKey = Config.Bind("1. General", "Menu Key", KeyCode.F8, "The key to press to show/hide the settings menu.");
+            _autoSetGlobalNameFromSteam = Config.Bind("Steamworks", "AutoSetGlobalNameFromSteam", true, "Use Steam persona names for the local global nickname and player name labels. Disabling may affect related functionality, but RPNames will continue to work; the choice is yours.");
+            _savedOriginalGlobalNickname = Config.Bind("Steamworks (Internal)", "Original Nickname", "", "Saved nickname used when restoring the original global nickname.");
+            _hasSavedOriginalGlobalNickname = Config.Bind("Steamworks (Internal)", "Has Original Nickname", false, "Whether an original global nickname is available to restore.");
+            _appliedSteamGlobalNickname = Config.Bind("Steamworks (Internal)", "Applied Steam Nickname", "", "Last Steam nickname applied by RPNames, used to avoid replacing a subsequently edited local nickname.");
             _characterProfilesJson = Config.Bind("2. Data", "CharacterProfiles", "{}", "Stores all title profiles for all character slots in JSON format.");
             _customPresetsJson = Config.Bind("2. Data", "CustomPresetsFull", "{}", "Stores user-defined full title profiles.");
 
@@ -197,6 +212,212 @@ namespace RPNames
             }
             Harmony.CreateAndPatchAll(typeof(HarmonyPatches));
             Log.LogInfo($"[{ModInfo.NAME} v{ModInfo.VERSION}] has loaded.");
+        }
+
+        internal void QueueApplySteamGlobalName(CharacterSelectManager? characterSelect)
+        {
+            if (!_autoSetGlobalNameFromSteam.Value && !_hasSavedOriginalGlobalNickname.Value)
+                return;
+
+            StartCoroutine(ApplySteamGlobalNameAfterMenuUpdate(characterSelect));
+        }
+
+        private IEnumerator ApplySteamGlobalNameAfterMenuUpdate(CharacterSelectManager? characterSelect)
+        {
+            yield return null;
+            yield return new WaitForSeconds(0.25f);
+
+            if (IsGameUiInGame())
+                yield break;
+
+            if (characterSelect == null)
+            {
+                characterSelect = UnityEngine.Object.FindObjectOfType<CharacterSelectManager>();
+                if (characterSelect == null)
+                {
+                    Log.LogWarning("[RPNames] CharacterSelectManager not found while applying Steam global name.");
+                    yield break;
+                }
+            }
+
+            InputField input = characterSelect._globalNickanmeInput;
+            if (input == null)
+            {
+                Log.LogWarning("[RPNames] Character select global nickname input is not available.");
+                yield break;
+            }
+
+            if (IsPreservingLocalNicknameInput(input))
+                yield break;
+
+            if (!_autoSetGlobalNameFromSteam.Value)
+            {
+                if (_hasSavedOriginalGlobalNickname.Value)
+                {
+                    if (input.text == _appliedSteamGlobalNickname.Value)
+                        SetGlobalNicknameInput(input, _savedOriginalGlobalNickname.Value);
+
+                    _savedOriginalGlobalNickname.Value = "";
+                    _hasSavedOriginalGlobalNickname.Value = false;
+                    _appliedSteamGlobalNickname.Value = "";
+                    Config.Save();
+                }
+                yield break;
+            }
+
+            string? steamName = GetLocalSteamName();
+            if (string.IsNullOrWhiteSpace(steamName))
+            {
+                LogSteamNameUnavailableOnce("Steam persona name is unavailable; the global nickname was not changed.");
+                yield break;
+            }
+
+            _steamNameUnavailableWarningLogged = false;
+            if (!string.IsNullOrWhiteSpace(input.text))
+            {
+                if (input.text != _appliedSteamGlobalNickname.Value
+                    && (_hasSavedOriginalGlobalNickname.Value || !string.IsNullOrEmpty(_appliedSteamGlobalNickname.Value)))
+                {
+                    _savedOriginalGlobalNickname.Value = "";
+                    _hasSavedOriginalGlobalNickname.Value = false;
+                    _appliedSteamGlobalNickname.Value = "";
+                    Config.Save();
+                }
+
+                yield break;
+            }
+
+            _savedOriginalGlobalNickname.Value = input.text;
+            _hasSavedOriginalGlobalNickname.Value = true;
+            _appliedSteamGlobalNickname.Value = steamName;
+            Config.Save();
+            SetGlobalNicknameInput(input, steamName);
+        }
+
+        private static void SetGlobalNicknameInput(InputField input, string text)
+        {
+            if (input.text == text)
+                return;
+
+            input.ActivateInputField();
+            input.text = text;
+        }
+
+        private void RefreshSteamGlobalNames()
+        {
+            if (IsGameUiInGame())
+                return;
+
+            if (!_autoSetGlobalNameFromSteam.Value)
+            {
+                foreach (var entry in _originalGlobalNicknames)
+                    if (entry.Key != null
+                        && _appliedSteamPlayerNicknames.TryGetValue(entry.Key, out string? appliedName)
+                        && entry.Key._globalNickname == appliedName)
+                        entry.Key._globalNickname = entry.Value;
+
+                _originalGlobalNicknames.Clear();
+                _appliedSteamPlayerNicknames.Clear();
+                return;
+            }
+
+            foreach (Player player in FindObjectsOfType<Player>())
+            {
+                if (player == null || !ulong.TryParse(player._steamID, out ulong steamId))
+                    continue;
+
+                if (player.isLocalPlayer && IsPreservingLocalNicknameInput())
+                    continue;
+
+                string? steamName = player.isLocalPlayer
+                    ? GetLocalSteamName()
+                    : GetSteamName(steamId);
+                if (string.IsNullOrWhiteSpace(steamName))
+                    continue;
+
+                bool alreadyApplied = _originalGlobalNicknames.ContainsKey(player);
+                if (alreadyApplied
+                    && (!_appliedSteamPlayerNicknames.TryGetValue(player, out string? appliedName)
+                        || player._globalNickname != appliedName))
+                {
+                    _originalGlobalNicknames.Remove(player);
+                    _appliedSteamPlayerNicknames.Remove(player);
+                    alreadyApplied = false;
+
+                    if (!string.IsNullOrWhiteSpace(player._globalNickname))
+                        continue;
+                }
+
+                if (!alreadyApplied)
+                {
+                    if (!string.IsNullOrWhiteSpace(player._globalNickname))
+                        continue;
+
+                    _originalGlobalNicknames[player] = player._globalNickname;
+                }
+
+                if (player._globalNickname != steamName)
+                    player._globalNickname = steamName;
+                _appliedSteamPlayerNicknames[player] = steamName;
+            }
+
+            foreach (Player gone in _originalGlobalNicknames.Keys.Where(player => player == null).ToList())
+            {
+                _originalGlobalNicknames.Remove(gone);
+                _appliedSteamPlayerNicknames.Remove(gone);
+            }
+        }
+
+        private bool IsPreservingLocalNicknameInput(InputField? input = null)
+        {
+            input ??= UnityEngine.Object.FindObjectOfType<CharacterSelectManager>()?._globalNickanmeInput;
+            if (input == null)
+                return false;
+
+            return input.isFocused
+                || (!string.IsNullOrWhiteSpace(input.text)
+                    && input.text != _appliedSteamGlobalNickname.Value);
+        }
+
+        private static string? GetLocalSteamName()
+        {
+            if (!SteamManager.Initialized)
+                return null;
+
+            return Steamworks.SteamFriends.GetPersonaName();
+        }
+
+        private string? GetSteamName(ulong steamId)
+        {
+            if (!Steamworks.SteamAPI.IsSteamRunning())
+                return null;
+
+            var userId = new Steamworks.CSteamID(steamId);
+            string name = Steamworks.SteamFriends.GetFriendPersonaName(userId);
+            if (string.IsNullOrWhiteSpace(name) || name == "[unknown]")
+            {
+                if (_requestedSteamUsers.Add(steamId))
+                    Steamworks.SteamFriends.RequestUserInformation(userId, true);
+
+                return null;
+            }
+
+            return name;
+        }
+
+        private void LogSteamNameUnavailableOnce(string message)
+        {
+            if (_steamNameUnavailableWarningLogged)
+                return;
+
+            Log.LogWarning($"[RPNames] {message}");
+            _steamNameUnavailableWarningLogged = true;
+        }
+
+        private static bool IsGameUiInGame()
+        {
+            return Player._mainPlayer != null
+                && Player._mainPlayer._currentGameCondition == GameCondition.IN_GAME;
         }
 
         private void InitializeGUIStyles()
@@ -331,6 +552,13 @@ namespace RPNames
 
         private void Update()
         {
+            _globalNameRefreshTimer += Time.unscaledDeltaTime;
+            if (_globalNameRefreshTimer >= 1f)
+            {
+                _globalNameRefreshTimer = 0f;
+                RefreshSteamGlobalNames();
+            }
+
             /* Fallback for OnGameConditionChange_Postfix: poll directly in case that patch gets
             missed on some entry path (patch ordering with other mods, exceptions earlier in
             the postfix chain, etc.). RequestFullTitleSync/SendTitleUpdate are idempotent, so
@@ -620,6 +848,25 @@ namespace RPNames
         internal static readonly Dictionary<uint, CharacterTitleProfile> PlayerProfiles = new Dictionary<uint, CharacterTitleProfile>();
         internal static readonly Dictionary<uint, string> CurrentPlayerTitles = new Dictionary<uint, string>();
         private static readonly FieldInfo _globalNicknameTextMeshField = AccessTools.Field(typeof(Player), "_globalNicknameTextMesh");
+
+        [HarmonyPostfix, HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Set_MenuCondition))]
+        private static void OnSetMenuCondition_Postfix(MainMenuManager __instance)
+        {
+            if (__instance._mainMenuCondition == MainMenuCondition.CharacterSelect)
+                Main.instance.QueueApplySteamGlobalName(__instance._characterSelectManager);
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(MainMenuManager), "Load_HostSettings")]
+        private static void OnLoadHostSettings_Postfix(MainMenuManager __instance)
+        {
+            Main.instance.QueueApplySteamGlobalName(__instance._characterSelectManager);
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(ProfileDataSender), "OnSend_CharacterFileData")]
+        private static void OnSendCharacterFileData_Postfix()
+        {
+            Main.instance.QueueApplySteamGlobalName(UnityEngine.Object.FindObjectOfType<CharacterSelectManager>());
+        }
         
         [HarmonyPostfix, HarmonyPatch(typeof(Player), "OnGameConditionChange")]
         private static void OnGameConditionChange_Postfix(Player __instance, GameCondition _newCondition) { if (__instance != Player._mainPlayer) return; Main.IsReady = (_newCondition == GameCondition.IN_GAME); if (Main.IsReady) { Main.CurrentCharacterSlot = ProfileDataManager._current.SelectedFileIndex; if (Main.instance.AllCharacterProfiles.TryGetValue(Main.CurrentCharacterSlot, out var profile)) { Main.instance.UpdateGradientCache(profile); Main.SendTitleUpdate(profile); } Main.RequestFullTitleSync(); } }

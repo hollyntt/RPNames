@@ -3,7 +3,7 @@
     <PropertyGroup>
         <Authors>s0apy.RPNames.sftwre</Authors>
         <Product>RPNames</Product>
-        <Version>1.4.7</Version>
+        <Version>1.5.0</Version>
         <PackageId>RPNames</PackageId>
     </PropertyGroup>
 
@@ -21,7 +21,7 @@
     </PropertyGroup>
     
     <PropertyGroup>
-        <AtlyssPath>C:\Program Files (x86)\Steam\steamapps\common\ATLYSS\</AtlyssPath>
+        <AtlyssPath>/home/hollyn/.local/share/Steam/steamapps/common/ATLYSS</AtlyssPath>
         <AtlyssManaged>$(AtlyssPath)/ATLYSS_Data/Managed/</AtlyssManaged>
     </PropertyGroup>
 

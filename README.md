@@ -8,6 +8,7 @@ Give yourself a custom, animated, and colorful roleplaying title above your name
 - **Fully In-Game GUI:** No more editing config files! Press **F8** (configurable) to open a stylish, animated menu and configure your title on the fly.
 - **Per-Character Profiles:** Your title settings are saved for each character slot automatically.
 - **Network Synced:** Other players with the mod (and CodeTalker) will see your custom title exactly as you designed it.
+- **Steamworks Global Names:** RPNames uses Steam persona names to fill blank global nicknames and player labels by default. Any local name you have entered is preserved. You can turn this off in the Steamworks config section.
 
 ### Rich Customization Options:
 - **Text Animations:**
@@ -47,8 +48,10 @@ Give yourself a custom, animated, and colorful roleplaying title above your name
 - **CodeTalker (Required for Multiplayer):** This mod relies on CodeTalker to send and receive title data between players.
     - If you are playing **single-player**, you do not need CodeTalker.
     - If you are playing **multiplayer**, every player who wants to see or show custom titles **must have both RPNames and CodeTalker installed.**
+- **SteamGlobalName (Optional):** Its functionality is now integrated into RPNames. If you keep the standalone mod installed while testing, disable its Steam-name feature when enabling RPNames' integrated option.
 
 ## Configuration
 The mod's configuration file is located at `BepInEx/config/RPNames.cfg`.
 - **Menu Key:** You can change the key used to open the menu (`F8` by default).
+- **Steamworks — AutoSetGlobalNameFromSteam:** Enabled by default. Steam persona names only fill blank global nicknames; nickname entry is left alone while its field is focused, and any local name you enter is preserved. Clearing the field allows Steam autofill again. Turning this off may affect related functionality, but RPNames will continue to work normally—whether to disable it is your choice. Updates pause during gameplay so they do not overwrite the in-game RPNames tag.
 - **CharacterProfiles:** This stores all your profile data in JSON format. It is strongly recommended to **only edit your titles through the in-game menu** to avoid errors.

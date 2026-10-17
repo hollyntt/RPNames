@@ -1,4 +1,14 @@
 ## Changelog
+### 1.5.0
+**Added:**
+- Added a `Steamworks` config toggle to use Steam persona names for the global nickname and player labels. It is enabled by default and can be disabled to use the local nickname.
+
+**Fixed:**
+- SteamGlobalName is no longer a dependency; its functionality is integrated into RPNames.
+- Steam persona updates are paused during gameplay so they cannot overwrite RPNames' in-game tag.
+- Existing local global nicknames are now preserved; Steam names only fill blank nicknames.
+- Steam autofill waits while the local nickname field is focused, allowing a local name to be entered without racing the Steam name update.
+
 ### 1.4.7
 **Fixed:**
 - Game would lock up at spawn if launched modded without Steam initialized. RPNames' networking calls would throw repeatedly (once per frame, forever) when Steamworks wasn't available, instead of failing gracefully — this now logs a single warning and disables networked titles for that session instead of hammering the game with exceptions. (Bug found by Xesy)
