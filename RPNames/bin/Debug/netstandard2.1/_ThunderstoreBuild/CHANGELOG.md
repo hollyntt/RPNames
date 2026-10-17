@@ -1,5 +1,5 @@
 ## Changelog
-### 1.5.0 - x.x.1
+### 1.5.0 - x.x.2
 **Added:**
 - Added a `Steamworks` config toggle to use Steam persona names for the global nickname and player labels. It is enabled by default and can be disabled to use the local nickname.
 
@@ -8,6 +8,7 @@
 - Steam persona updates are paused during gameplay so they cannot overwrite RPNames' in-game tag.
 - Existing local global nicknames are now preserved; Steam names only fill blank nicknames.
 - Steam autofill waits while the local nickname field is focused, allowing a local name to be entered without racing the Steam name update.
+- Mod screenshot for Thunderstore
 
 **Updated:**
 - The look of the icon is more better than before, I gave it blue instead of green - Matching the UI in-game. Ui design my beloved

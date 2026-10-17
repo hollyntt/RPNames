@@ -2,7 +2,7 @@
 
 Give yourself a custom, animated, and colorful roleplaying title above your name! All titles are synced with other players in multiplayer.
 
-<img width="377" height="858" alt="image" src="https://github.com/user-attachments/assets/d6a909fe-dda6-4715-bbcb-81c295a7ab60" />
+![Mod Screenshot For thunderstore](https://github.com/user-attachments/assets/d6a909fe-dda6-4715-bbcb-81c295a7ab60)
 
 ## Features
 - **Fully In-Game GUI:** No more editing config files! Press **F8** (configurable) to open a stylish, animated menu and configure your title on the fly.
