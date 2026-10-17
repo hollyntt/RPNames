@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("s0apy.RPNames.sftwre")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.5.1.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.5.1+1266386b96e15860f26e36abdd758c5b135e6a18")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.5.1+6009cb3790ed233d6fd2e2bbef2d1531af4a1646")]
 [assembly: System.Reflection.AssemblyProductAttribute("RPNames")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RPNames")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.5.1.0")]
