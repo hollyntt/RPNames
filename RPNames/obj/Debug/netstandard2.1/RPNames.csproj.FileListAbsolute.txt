@@ -280,3 +280,5 @@ D:/Documents/CODE/Ours/RoleplayTitles/RPNames/obj/Debug/netstandard2.1/RPNames.d
 /run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/obj/Debug/netstandard2.1/RPNames.sourcelink.json
 /run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/obj/Debug/netstandard2.1/RPNames.csproj.Up2Date
 /run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/obj/Debug/netstandard2.1/RPNames.dll
+/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/bin/Debug/netstandard2.1/Marioalexsan.Multitool.dll
+/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/bin/Debug/netstandard2.1/EasySettings.dll

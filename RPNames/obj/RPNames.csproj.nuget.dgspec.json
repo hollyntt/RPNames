@@ -5,7 +5,7 @@
   },
   "projects": {
     "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj": {
-      "version": "1.5.1",
+      "version": "1.6.0",
       "restore": {
         "projectUniqueName": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
         "projectName": "RPNames",
@@ -63,6 +63,14 @@
               "target": "Package",
               "version": "[5.4.*, )"
             },
+            "Marioalexsan-Multitool": {
+              "target": "Package",
+              "version": "[1.0.*, )"
+            },
+            "Nessie-EasySettings": {
+              "target": "Package",
+              "version": "[1.3.*, )"
+            },
             "Soggy_Pancake-CodeYapper": {
               "target": "Package",
               "version": "[2.2.*, )"
@@ -95,7 +103,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.112/RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.113/RuntimeIdentifierGraph.json"
         }
       }
     }

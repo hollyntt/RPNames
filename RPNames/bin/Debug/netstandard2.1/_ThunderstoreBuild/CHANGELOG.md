@@ -1,5 +1,25 @@
 ## Changelog
-### 1.5.0 - x.x.2
+### 1.6.0 - x.x.x
+**Added:**
+- Titles are now saved per character through Multitool, so they follow the character instead of a slot number in the config. Multitool is a new dependency.
+- EasySettings support: the Steam toggle and the menu key are on the main Mods page. EasySettings is optional.
+- "Import old title from config" button in the settings menu, shown for slots that still have a title in the old config.
+
+**Fixed:**
+- Sharing a mod profile or config no longer gives other people your titles on their characters.
+- The Steam nickname bookkeeping is no longer written to the config, so a shipped config can't overwrite anyone's nickname state.
+- The cfg no longer fills up with every character's profile JSON.
+
+**Updated:**
+- `CharacterProfiles` in the config is now legacy-only and is cleared per slot as old titles are imported.
+- Without Multitool installed, titles fall back to the old config storage and a warning is logged.
+
+- **SGN:** Steam ID in the state: the nickname state now records which Steam account filled the name, and that ID is saved along with the rest of the state.
+  Filled in by the mod: if the field still holds the name RPNames put there and it differs from the current Steam name, it’s replaced with the current account’s name. An account switch logs “Steam account changed”. The same path handles someone renaming their Steam persona.
+  Typed by the player: if they entered their own nickname, it’s left alone, and the old bookkeeping is cleared as before. That custom nickname stays when they switch accounts.
+  Toggle off: still restores the original nickname.
+
+### 1.5.0
 **Added:**
 - Added a `Steamworks` config toggle to use Steam persona names for the global nickname and player labels. It is enabled by default and can be disabled to use the local nickname.
 

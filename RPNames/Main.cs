@@ -18,7 +18,9 @@ using CodeTalker.Networking;
 using CodeTalker.Packets;
 using Newtonsoft.Json;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using Mirror; 
+using Nessie.ATLYSS.EasySettings;
 
 // ============== NAMESPACE DEFINITIONS ==============
 namespace RPNames
@@ -53,6 +55,25 @@ namespace RPNames
         public float PronounColorAnimationSpeed { get; set; } = 1f;
         public bool TitleOnNewLine { get; set; } = true;
         public bool AddGapAboveTitle { get; set; } = true;
+    }
+
+    // Steam nickname bookkeeping. One global copy, but it's written into every character save
+    // (via Multitool) so it follows the player's saves instead of a shared config. Newest Stamp wins.
+    public class SteamNameState
+    {
+        public string Original = "";
+        public bool HasOriginal;
+        public string Applied = "";
+        public List<string> AutoNames = new List<string>();
+        public ulong SteamId;
+        public long Stamp;
+    }
+
+    // Everything RPNames keeps inside a character save
+    public class CharacterSaveData
+    {
+        public CharacterTitleProfile? Title;
+        public SteamNameState? Steam;
     }
 
     public enum TextAnimationType { Static, Scroll, Marquee, Typewriter }
@@ -124,6 +145,7 @@ namespace RPNames
 
     [BepInPlugin(ModInfo.GUID, ModInfo.NAME, ModInfo.VERSION)]
     [BepInDependency("CodeTalker", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("Marioalexsan.Multitool", BepInDependency.DependencyFlags.SoftDependency)]
     public class Main : BaseUnityPlugin
     {
         public static Main instance;
@@ -134,9 +156,10 @@ namespace RPNames
         // CUSTOM PRESETS CONFIG
         private static ConfigEntry<string> _customPresetsJson;
         private ConfigEntry<bool> _autoSetGlobalNameFromSteam = null!;
-        private ConfigEntry<string> _savedOriginalGlobalNickname = null!;
-        private ConfigEntry<bool> _hasSavedOriginalGlobalNickname = null!;
-        private ConfigEntry<string> _appliedSteamGlobalNickname = null!;
+        private SteamNameState _steamState = new SteamNameState();
+        // Legacy titles still sitting in the cfg (read-only, imported on request)
+        private Dictionary<int, CharacterTitleProfile> _legacyProfiles = new Dictionary<int, CharacterTitleProfile>();
+        internal static bool UsingMultitool;
         private readonly Dictionary<Player, string> _originalGlobalNicknames = new Dictionary<Player, string>();
         private readonly Dictionary<Player, string> _appliedSteamPlayerNicknames = new Dictionary<Player, string>();
         private readonly HashSet<ulong> _requestedSteamUsers = new HashSet<ulong>();
@@ -193,13 +216,12 @@ namespace RPNames
             Log = Logger;
             _menuKey = Config.Bind("1. General", "Menu Key", KeyCode.F8, "The key to press to show/hide the settings menu.");
             _autoSetGlobalNameFromSteam = Config.Bind("Steamworks", "AutoSetGlobalNameFromSteam", true, "Use Steam persona names for the local global nickname and player name labels. Disabling may affect related functionality, but RPNames will continue to work; the choice is yours.");
-            _savedOriginalGlobalNickname = Config.Bind("Steamworks (Internal)", "Original Nickname", "", "Saved nickname used when restoring the original global nickname.");
-            _hasSavedOriginalGlobalNickname = Config.Bind("Steamworks (Internal)", "Has Original Nickname", false, "Whether an original global nickname is available to restore.");
-            _appliedSteamGlobalNickname = Config.Bind("Steamworks (Internal)", "Applied Steam Nickname", "", "Last Steam nickname applied by RPNames, used to avoid replacing a subsequently edited local nickname.");
-            _characterProfilesJson = Config.Bind("2. Data", "CharacterProfiles", "{}", "Stores all title profiles for all character slots in JSON format.");
-            _customPresetsJson = Config.Bind("2. Data", "CustomPresetsFull", "{}", "Stores user-defined full title profiles.");
+            _characterProfilesJson = Config.Bind("2. Data", "CharacterProfiles", "{}", "Legacy storage. With Multitool installed, titles are saved with each character instead and this is only kept so old titles can be imported.");
+            _customPresetsJson = Config.Bind("2. Data", "CustomPresetsFull", "{}", "Stores user-defined full title profiles (style presets).");
 
-            LoadProfiles();
+            UsingMultitool = TryRegisterMultitool();
+            if (UsingMultitool) LoadLegacyProfiles(); else LoadProfiles();
+            LoadSteamState();
             LoadCustomPresets(); 
             PopulatePresetTitles();
             
@@ -210,13 +232,16 @@ namespace RPNames
                 CodeTalkerNetwork.RegisterBinaryListener<Packets.FullSyncPacket>(OnFullSync);
                 CodeTalkerNetwork.RegisterListener<Packets.RequestAllTitlesPacket>(OnSyncRequest);
             }
+            // EasySettings is optional: if the dll is missing the call throws here and we just skip the page
+            try { InitEasySettings(); }
+            catch (Exception ex) { Log.LogInfo($"[RPNames] EasySettings not available, skipping the settings page ({ex.GetType().Name})"); }
             Harmony.CreateAndPatchAll(typeof(HarmonyPatches));
             Log.LogInfo($"[{ModInfo.NAME} v{ModInfo.VERSION}] has loaded.");
         }
 
         internal void QueueApplySteamGlobalName(CharacterSelectManager? characterSelect)
         {
-            if (!_autoSetGlobalNameFromSteam.Value && !_hasSavedOriginalGlobalNickname.Value)
+            if (!_autoSetGlobalNameFromSteam.Value && !_steamState.HasOriginal)
                 return;
 
             StartCoroutine(ApplySteamGlobalNameAfterMenuUpdate(characterSelect));
@@ -247,20 +272,19 @@ namespace RPNames
                 yield break;
             }
 
+            Log.LogInfo($"[RPNames] Nickname check: field='{input.text}', applied='{_steamState.Applied}', steam='{GetLocalSteamName()}'");
+
             if (IsPreservingLocalNicknameInput(input))
                 yield break;
 
             if (!_autoSetGlobalNameFromSteam.Value)
             {
-                if (_hasSavedOriginalGlobalNickname.Value)
+                if (_steamState.HasOriginal)
                 {
-                    if (input.text == _appliedSteamGlobalNickname.Value)
-                        SetGlobalNicknameInput(input, _savedOriginalGlobalNickname.Value);
+                    if (input.text == _steamState.Applied)
+                        SetGlobalNicknameInput(input, _steamState.Original);
 
-                    _savedOriginalGlobalNickname.Value = "";
-                    _hasSavedOriginalGlobalNickname.Value = false;
-                    _appliedSteamGlobalNickname.Value = "";
-                    Config.Save();
+                    ResetSteamState();
                 }
                 yield break;
             }
@@ -273,25 +297,165 @@ namespace RPNames
             }
 
             _steamNameUnavailableWarningLogged = false;
+            ulong steamId = GetLocalSteamId();
+
             if (!string.IsNullOrWhiteSpace(input.text))
             {
-                if (input.text != _appliedSteamGlobalNickname.Value
-                    && (_hasSavedOriginalGlobalNickname.Value || !string.IsNullOrEmpty(_appliedSteamGlobalNickname.Value)))
+                // Only auto names get here (a typed nickname returned above). Follow the account that's playing now.
+                if (input.text != steamName)
                 {
-                    _savedOriginalGlobalNickname.Value = "";
-                    _hasSavedOriginalGlobalNickname.Value = false;
-                    _appliedSteamGlobalNickname.Value = "";
-                    Config.Save();
+                    if (_steamState.SteamId != 0 && _steamState.SteamId != steamId)
+                        Log.LogInfo("[RPNames] Steam account changed, updating the global nickname.");
+
+                    RememberAutoName(steamName, steamId);
+                    yield return ApplyNicknameWithRetry(input, steamName);
+                }
+                else if (_steamState.Applied != steamName || _steamState.SteamId != steamId)
+                {
+                    RememberAutoName(steamName, steamId);
                 }
 
                 yield break;
             }
 
-            _savedOriginalGlobalNickname.Value = input.text;
-            _hasSavedOriginalGlobalNickname.Value = true;
-            _appliedSteamGlobalNickname.Value = steamName;
+            _steamState.Original = input.text;
+            _steamState.HasOriginal = true;
+            RememberAutoName(steamName, steamId);
+            yield return ApplyNicknameWithRetry(input, steamName);
+        }
+
+        // ===== Steam nickname state: never in the shared cfg =====
+        private static string SteamStatePath => Path.Combine(Application.persistentDataPath, "RPNames_steam_state.json");
+
+        private void LoadSteamState()
+        {
+            try
+            {
+                if (File.Exists(SteamStatePath))
+                    _steamState = JsonConvert.DeserializeObject<SteamNameState>(File.ReadAllText(SteamStatePath)) ?? new SteamNameState();
+            }
+            catch { _steamState = new SteamNameState(); }
+        }
+
+        private void SaveSteamState()
+        {
+            _steamState.Stamp = DateTime.UtcNow.Ticks;
+            WriteSteamStateFile();
+        }
+
+        // The file is what the character select screen reads, characters aren't loaded yet at that point.
+        // The copy inside each character save (Multitool) is just a backup that travels with the saves.
+        private void WriteSteamStateFile()
+        {
+            try { File.WriteAllText(SteamStatePath, JsonConvert.SerializeObject(_steamState)); }
+            catch (Exception ex) { Log.LogWarning($"[RPNames] Couldn't save Steam nickname state: {ex.Message}"); }
+        }
+
+        private void ResetSteamState()
+        {
+            _steamState = new SteamNameState();
+            SaveSteamState();
+        }
+
+        // ===== Optional integrations =====
+        private static Type? FindType(string fullName)
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var t = asm.GetType(fullName, false);
+                    if (t != null) return t;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static bool TryRegisterMultitool()
+        {
+            if (FindType("Marioalexsan.Multitool.SaveUtils.SaveUtilsAPI") == null)
+            {
+                Log.LogWarning("[RPNames] Multitool not found - titles fall back to the old cfg storage. Install Multitool to keep titles with each character.");
+                return false;
+            }
+
+            try
+            {
+                MultitoolHook.Register();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning($"[RPNames] Multitool hook failed, using cfg storage: {ex.Message}");
+                return false;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void InitEasySettings()
+        {
+            Settings.OnInitialized.AddListener(AddSettings);
+            Settings.OnApplySettings.AddListener(OnSettingsApplied);
+        }
+
+        private void AddSettings()
+        {
+            SettingsTab tab = Settings.ModTab;
+
+            tab.AddHeader("RPNames (Global)");
+            tab.AddToggle("Use Steam name as global nickname", _autoSetGlobalNameFromSteam);
+            tab.AddKeyButton("Menu Key", _menuKey);
+        }
+
+        internal void OnSettingsApplied()
+        {
             Config.Save();
-            SetGlobalNicknameInput(input, steamName);
+            QueueApplySteamGlobalName(null);
+        }
+
+        // Called by Multitool when the game loads / saves / deletes a character
+        internal void OnCharacterLoaded(int slot, CharacterSaveData? data)
+        {
+            if (data?.Title == null) AllCharacterProfiles.Remove(slot);
+            else AllCharacterProfiles[slot] = data.Title;
+
+            // every character carries a copy of the Steam state, keep the newest one
+            if (data?.Steam != null && data.Steam.Stamp > _steamState.Stamp)
+            {
+                _steamState = data.Steam;
+                WriteSteamStateFile();
+            }
+        }
+
+        internal CharacterSaveData? OnCharacterSaving(int slot)
+        {
+            AllCharacterProfiles.TryGetValue(slot, out var title);
+
+            SteamNameState? steam = null;
+            if (_steamState.Stamp > 0)
+                steam = new SteamNameState { Original = _steamState.Original, HasOriginal = _steamState.HasOriginal, Applied = _steamState.Applied, AutoNames = new List<string>(_steamState.AutoNames), SteamId = _steamState.SteamId, Stamp = _steamState.Stamp };
+
+            if (title == null && steam == null) return null;
+            return new CharacterSaveData { Title = title, Steam = steam };
+        }
+
+        internal void OnCharacterDeleted(int slot) => AllCharacterProfiles.Remove(slot);
+
+        private void LoadLegacyProfiles()
+        {
+            try
+            {
+                var old = JsonConvert.DeserializeObject<Dictionary<int, CharacterTitleProfile>>(_characterProfilesJson.Value);
+                if (old != null) _legacyProfiles = old;
+            }
+            catch { _legacyProfiles = new Dictionary<int, CharacterTitleProfile>(); }
+        }
+
+        private void SaveLegacyProfiles()
+        {
+            _characterProfilesJson.Value = JsonConvert.SerializeObject(_legacyProfiles);
+            Config.Save();
         }
 
         private static void SetGlobalNicknameInput(InputField input, string text)
@@ -299,8 +463,8 @@ namespace RPNames
             if (input.text == text)
                 return;
 
-            input.ActivateInputField();
             input.text = text;
+            input.onEndEdit.Invoke(text);
         }
 
         private void RefreshSteamGlobalNames()
@@ -375,8 +539,54 @@ namespace RPNames
                 return false;
 
             return input.isFocused
-                || (!string.IsNullOrWhiteSpace(input.text)
-                    && input.text != _appliedSteamGlobalNickname.Value);
+                || (!string.IsNullOrWhiteSpace(input.text) && !IsAutoName(input.text));
+        }
+
+        // True for any name RPNames filled in itself (any account), or the current Steam name
+        private bool IsAutoName(string text)
+        {
+            return text == _steamState.Applied
+                || _steamState.AutoNames.Contains(text)
+                || text == GetLocalSteamName();
+        }
+
+        private void RememberAutoName(string name, ulong steamId)
+        {
+            _steamState.Applied = name;
+            _steamState.SteamId = steamId;
+            if (!_steamState.AutoNames.Contains(name))
+                _steamState.AutoNames.Add(name);
+            if (_steamState.AutoNames.Count > 8)
+                _steamState.AutoNames.RemoveAt(0);
+            SaveSteamState();
+        }
+
+        private IEnumerator ApplyNicknameWithRetry(InputField input, string name)
+        {
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                if (input == null) yield break;
+                SetGlobalNicknameInput(input, name);
+                yield return new WaitForSeconds(0.5f);
+
+                if (input == null) yield break;
+                if (input.text == name)
+                {
+                    Log.LogInfo($"[RPNames] Global nickname set to '{name}'.");
+                    yield break;
+                }
+                if (input.isFocused) yield break; // player started typing
+
+                Log.LogInfo($"[RPNames] Nickname field went back to '{input.text}', retrying ({attempt}/3).");
+            }
+        }
+
+        private static ulong GetLocalSteamId()
+        {
+            if (!SteamManager.Initialized)
+                return 0;
+
+            return Steamworks.SteamUser.GetSteamID().m_SteamID;
         }
 
         private static string? GetLocalSteamName()
@@ -439,7 +649,8 @@ namespace RPNames
         }
 
         private void LoadProfiles() { try { var loadedProfiles = JsonConvert.DeserializeObject<Dictionary<int, CharacterTitleProfile>>(_characterProfilesJson.Value); if (loadedProfiles != null) AllCharacterProfiles = loadedProfiles; } catch { AllCharacterProfiles = new Dictionary<int, CharacterTitleProfile>(); } }
-        private void SaveProfiles() { _characterProfilesJson.Value = JsonConvert.SerializeObject(AllCharacterProfiles, Formatting.Indented); Config.Save(); }
+        // With Multitool the game's own character save pulls AllCharacterProfiles, so nothing to write here
+        private void SaveProfiles() { if (UsingMultitool) return; _characterProfilesJson.Value = JsonConvert.SerializeObject(AllCharacterProfiles, Formatting.Indented); Config.Save(); }
         
         private void LoadCustomPresets() 
         { 
@@ -815,7 +1026,12 @@ namespace RPNames
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal(); if (GUILayout.Button("Copy")) { _copiedProfileBuffer = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile)); } GUI.enabled = _copiedProfileBuffer != null; if (GUILayout.Button("Paste")) { if (_copiedProfileBuffer != null) { _uiEditingProfile = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_copiedProfileBuffer)); } } GUI.enabled = true; GUILayout.EndHorizontal();
             
-            if (GUILayout.Button("Set & Save")) { AllCharacterProfiles[CurrentCharacterSlot] = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile)); SaveProfiles(); var currentProfile = AllCharacterProfiles[CurrentCharacterSlot]; UpdateGradientCache(currentProfile); SendTitleUpdate(currentProfile); _menuState = MenuState.Closing; }
+            if (UsingMultitool && !AllCharacterProfiles.ContainsKey(CurrentCharacterSlot) && _legacyProfiles.TryGetValue(CurrentCharacterSlot, out var legacy) && legacy != null)
+            {
+                if (GUILayout.Button("Import old title from config (this slot)")) _uiEditingProfile = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(legacy));
+            }
+
+            if (GUILayout.Button("Set & Save")) { AllCharacterProfiles[CurrentCharacterSlot] = JsonConvert.DeserializeObject<CharacterTitleProfile>(JsonConvert.SerializeObject(_uiEditingProfile)); SaveProfiles(); if (UsingMultitool && _legacyProfiles.Remove(CurrentCharacterSlot)) SaveLegacyProfiles(); var currentProfile = AllCharacterProfiles[CurrentCharacterSlot]; UpdateGradientCache(currentProfile); SendTitleUpdate(currentProfile); _menuState = MenuState.Closing; }
             
             if (_showClearConfirmation)
             {
@@ -841,6 +1057,20 @@ namespace RPNames
         }
     }
     
+    // Separate classes so Multitool / EasySettings types only load when those mods are installed
+    internal static class MultitoolHook
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Register()
+        {
+            Marioalexsan.Multitool.SaveUtils.SaveUtilsAPI.RegisterProfileData<CharacterSaveData>(ModInfo.GUID, Save, Load, Delete);
+        }
+
+        private static void Save(CharacterFile file, int slotIndex, out CharacterSaveData? data) => data = Main.instance.OnCharacterSaving(slotIndex);
+        private static void Load(CharacterFile file, int slotIndex, CharacterSaveData? data) => Main.instance.OnCharacterLoaded(slotIndex, data);
+        private static void Delete(CharacterFile file, int slotIndex) => Main.instance.OnCharacterDeleted(slotIndex);
+    }
+
     // ============== HARMONY PATCHES ==============
     [HarmonyPatch]
     internal static class HarmonyPatches

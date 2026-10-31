@@ -7,11 +7,13 @@
   "targets": {
     ".NETStandard,Version=v2.1": {},
     ".NETStandard,Version=v2.1/": {
-      "RPNames/1.5.2": {
+      "RPNames/1.6.0": {
         "dependencies": {
           "BepInEx.AssemblyPublicizer.MSBuild": "0.4.2",
           "BepInEx.Core": "5.4.21",
-          "Soggy_Pancake-CodeYapper": "2.2.2",
+          "Marioalexsan-Multitool": "1.0.1",
+          "Nessie-EasySettings": "1.3.0",
+          "Soggy_Pancake-CodeYapper": "2.2.3",
           "UnityEngine.Modules": "2022.3.62"
         },
         "runtime": {
@@ -71,6 +73,14 @@
           }
         }
       },
+      "Marioalexsan-Multitool/1.0.1": {
+        "runtime": {
+          "lib/netstandard2.0/Marioalexsan.Multitool.dll": {
+            "assemblyVersion": "1.0.1.0",
+            "fileVersion": "1.0.1.0"
+          }
+        }
+      },
       "Mono.Cecil/0.11.4": {
         "runtime": {
           "lib/netstandard2.0/Mono.Cecil.Mdb.dll": {
@@ -122,11 +132,19 @@
           }
         }
       },
-      "Soggy_Pancake-CodeYapper/2.2.2": {
+      "Nessie-EasySettings/1.3.0": {
+        "runtime": {
+          "lib/netstandard2.0/EasySettings.dll": {
+            "assemblyVersion": "1.3.0.0",
+            "fileVersion": "1.3.0.0"
+          }
+        }
+      },
+      "Soggy_Pancake-CodeYapper/2.2.3": {
         "runtime": {
           "lib/netstandard2.0/CodeTalker.dll": {
-            "assemblyVersion": "2.2.2.0",
-            "fileVersion": "2.2.2.0"
+            "assemblyVersion": "2.2.3.0",
+            "fileVersion": "2.2.3.0"
           }
         }
       },
@@ -494,7 +512,7 @@
     }
   },
   "libraries": {
-    "RPNames/1.5.2": {
+    "RPNames/1.6.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
@@ -527,6 +545,13 @@
       "path": "harmonyx/2.7.0",
       "hashPath": "harmonyx.2.7.0.nupkg.sha512"
     },
+    "Marioalexsan-Multitool/1.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-hK6FJtC0UNBP6p26pcA4E/ixCioX7l4Qz6I3XVdIKQkkHyxdXDB/rTts88j4eiwd1rS86uFVfCHmkXth0yleWQ==",
+      "path": "marioalexsan-multitool/1.0.1",
+      "hashPath": "marioalexsan-multitool.1.0.1.nupkg.sha512"
+    },
     "Mono.Cecil/0.11.4": {
       "type": "package",
       "serviceable": true,
@@ -548,12 +573,19 @@
       "path": "monomod.utils/21.12.13.1",
       "hashPath": "monomod.utils.21.12.13.1.nupkg.sha512"
     },
-    "Soggy_Pancake-CodeYapper/2.2.2": {
+    "Nessie-EasySettings/1.3.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-TyiUF2SkKGbVPCYyJ52YCjiaVOAiUm81phlGUQzJRoIxliw87IZwzqlLT10MqVwRcWglzgvbHc1WdNPg3u6RpQ==",
-      "path": "soggy_pancake-codeyapper/2.2.2",
-      "hashPath": "soggy_pancake-codeyapper.2.2.2.nupkg.sha512"
+      "sha512": "sha512-xYymbUuQ47vln9No56qbYm3k87PIs8wMJUa/MSRV0VpKtGUEfKQEdwsyVgNvNqi/64PL0SggQfQQUpY6VvH6lw==",
+      "path": "nessie-easysettings/1.3.0",
+      "hashPath": "nessie-easysettings.1.3.0.nupkg.sha512"
+    },
+    "Soggy_Pancake-CodeYapper/2.2.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-QgvWXX0K4XIuCQplEyncpkkugDrIKC7uhNAXnh7VEeKmLv67jSl5bGWUTA4I2lu7zgtV0tvS8uG9onav0Y3tXw==",
+      "path": "soggy_pancake-codeyapper/2.2.3",
+      "hashPath": "soggy_pancake-codeyapper.2.2.3.nupkg.sha512"
     },
     "System.Collections.NonGeneric/4.3.0": {
       "type": "package",
