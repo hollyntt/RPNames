@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "yZPIb+ipAxk=",
+  "dgSpecHash": "CQ6B6ahAFGw=",
   "success": true,
   "projectFilePath": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
   "expectedPackageFiles": [
@@ -16,7 +16,7 @@
     "/home/hollyn/.nuget/packages/monomod.runtimedetour/21.12.13.1/monomod.runtimedetour.21.12.13.1.nupkg.sha512",
     "/home/hollyn/.nuget/packages/monomod.utils/21.12.13.1/monomod.utils.21.12.13.1.nupkg.sha512",
     "/home/hollyn/.nuget/packages/nessie-easysettings/1.3.0/nessie-easysettings.1.3.0.nupkg.sha512",
-    "/home/hollyn/.nuget/packages/soggy_pancake-codeyapper/2.2.3/soggy_pancake-codeyapper.2.2.3.nupkg.sha512",
+    "/home/hollyn/.nuget/packages/soggy_pancake-codeyapper/2.2.4/soggy_pancake-codeyapper.2.2.4.nupkg.sha512",
     "/home/hollyn/.nuget/packages/system.collections/4.3.0/system.collections.4.3.0.nupkg.sha512",
     "/home/hollyn/.nuget/packages/system.collections.nongeneric/4.3.0/system.collections.nongeneric.4.3.0.nupkg.sha512",
     "/home/hollyn/.nuget/packages/system.collections.specialized/4.3.0/system.collections.specialized.4.3.0.nupkg.sha512",

@@ -12,12 +12,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using TMPro;
 using CodeTalker;
 using CodeTalker.Networking;
 using CodeTalker.Packets;
 using Newtonsoft.Json;
-using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using Mirror; 
 using Nessie.ATLYSS.EasySettings;
@@ -137,7 +137,11 @@ namespace RPNames
             public FullSyncPacket(Dictionary<uint, CharacterTitleProfile> profiles) { AllProfiles = profiles; }
 
             public override byte[] Serialize() { using (var ms = new MemoryStream()) { using (var writer = new BinaryWriter(ms)) { writer.Write(AllProfiles.Count); foreach (var entry in AllProfiles) { writer.Write(entry.Key); ProfileSerializer.WriteProfile(writer, entry.Value); } } return ms.ToArray(); } }
-            public override void Deserialize(byte[] data) { using (var ms = new MemoryStream(data)) { using (var reader = new BinaryReader(ms)) { int count = reader.ReadInt32(); AllProfiles = new Dictionary<uint, CharacterTitleProfile>(count); for (int i = 0; i < count; i++) { AllProfiles.Add(reader.ReadUInt32(), ProfileSerializer.ReadProfile(reader)); } } } }
+            // count comes from the sender: a negative value used to throw in the Dictionary
+            // constructor and duplicate keys threw on Add, both inside the receive pipeline.
+            // Cap it at a realistic lobby size and last-write-wins on duplicates.
+            private const int MaxProfiles = 512;
+            public override void Deserialize(byte[] data) { using (var ms = new MemoryStream(data)) { using (var reader = new BinaryReader(ms)) { int count = reader.ReadInt32(); AllProfiles = new Dictionary<uint, CharacterTitleProfile>(); for (int i = 0; i < count && i < MaxProfiles; i++) { uint netId = reader.ReadUInt32(); AllProfiles[netId] = ProfileSerializer.ReadProfile(reader); } } } }
         }
 
         public class RequestAllTitlesPacket : PacketBase { public override string PacketSourceGUID => ModInfo.GUID; }
@@ -677,19 +681,73 @@ namespace RPNames
             }
         }
         
+        // Full-sync data is only trusted from the lobby owner (the server-gated sender) and only
+        // for players we actually have in the lobby. A malicious client must not be able to attach
+        // profiles to arbitrary NetIDs and have the server echo them back to everyone.
         public static void OnFullSync(PacketHeader header, BinaryPacketBase packet)
         {
             if (packet is Packets.FullSyncPacket p)
             {
                 Log.LogInfo($"[RPNames] Received full-sync with {p.AllProfiles?.Count ?? 0} profile(s).");
+                try
+                {
+                    if (!header.SenderIsLobbyOwner)
+                    {
+                        Log.LogInfo($"[RPNames] Ignoring full-sync from non-owner {header.SenderID}.");
+                        return;
+                    }
+                }
+                catch
+                {
+                    // Owner unknown (lobby torn down / handle invalid) — fall through to the
+                    // NetID filter instead of dropping a legitimate host response.
+                }
+                var activeNetIds = new HashSet<uint>(FindObjectsOfType<Player>().Select(x => x.netId));
                 var localNetIds = HarmonyPatches.PlayerProfiles.Keys.ToList();
                 foreach (var localId in localNetIds) if (!p.AllProfiles.ContainsKey(localId)) ApplyProfileUpdate(localId, null);
-                foreach (var entry in p.AllProfiles) ApplyProfileUpdate(entry.Key, entry.Value);
+                foreach (var entry in p.AllProfiles) if (activeNetIds.Contains(entry.Key)) ApplyProfileUpdate(entry.Key, entry.Value);
             }
         }
         
+        // Network profiles come from lobby mates, so sanitize once at ingestion: the per-frame
+        // animation loop and TMP label never see raw attacker values after this.
+        private static readonly Regex _tagStrip = new Regex("<[^>]*>", RegexOptions.Compiled);
+        private static readonly Regex _hexColor = new Regex(@"^[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
+        private static string SanitizeDisplayText(string s)
+        {
+            // Strip TMP rich-text tags (a lobby mate's Title/Pronouns render with richText on)
+            // and cap length so a 4kb packet can't build an enormous per-frame string.
+            if (string.IsNullOrEmpty(s)) return "";
+            s = _tagStrip.Replace(s, "");
+            return s.Length > 64 ? s.Substring(0, 64) : s;
+        }
+
+        private static string SanitizeHexColor(string s, string fallback)
+        {
+            // Raw interpolation of a non-hex string into <color=...> lets an attacker break out of
+            // the tag; only accept clean 6-char hex, otherwise fall back to a safe default.
+            s = (s ?? "").Replace("#", "");
+            return _hexColor.IsMatch(s) ? s : fallback;
+        }
+
         private static void ApplyProfileUpdate(uint netId, CharacterTitleProfile profile)
         {
+            if (profile != null)
+            {
+                profile.Title = SanitizeDisplayText(profile.Title ?? "");
+                profile.Pronouns = SanitizeDisplayText(profile.Pronouns ?? "");
+                // Negative width threw every frame in Update()/GetAnimatedText, and int.MaxValue
+                // would allocate a multi-GB string. The UI slider max is 40, so clamp to a sane range.
+                profile.MarqueeWidth = Mathf.Clamp(profile.MarqueeWidth, 1, 64);
+                if (profile.AnimationSpeed <= 0f) profile.AnimationSpeed = 0.25f; // zero/negative timer threshold made the animation tick every frame forever
+                profile.SingleHexColor = SanitizeHexColor(profile.SingleHexColor, "FFFFFF");
+                profile.GradientStartColor = SanitizeHexColor(profile.GradientStartColor, "FF0000");
+                profile.GradientEndColor = SanitizeHexColor(profile.GradientEndColor, "0000FF");
+                profile.PronounSingleHexColor = SanitizeHexColor(profile.PronounSingleHexColor, "FFFFFF");
+                profile.PronounGradientStartColor = SanitizeHexColor(profile.PronounGradientStartColor, "FF0000");
+                profile.PronounGradientEndColor = SanitizeHexColor(profile.PronounGradientEndColor, "0000FF");
+            }
+
             bool hasContent = profile != null && (!string.IsNullOrEmpty(profile.Title) || (profile.ShowPronouns && !string.IsNullOrEmpty(profile.Pronouns)));
             if (!hasContent) { if (HarmonyPatches.PlayerProfiles.ContainsKey(netId)) HarmonyPatches.PlayerProfiles.Remove(netId); if (HarmonyPatches.CurrentPlayerTitles.ContainsKey(netId)) HarmonyPatches.CurrentPlayerTitles.Remove(netId); if (AllPlayerAnimators.ContainsKey(netId)) AllPlayerAnimators.Remove(netId); }
             else
@@ -738,7 +796,10 @@ namespace RPNames
             {
                 var syncPacket = new Packets.FullSyncPacket(HarmonyPatches.PlayerProfiles);
                 Log.LogInfo($"[RPNames] Replying to full-sync request from {header.SenderID} with {HarmonyPatches.PlayerProfiles.Count} profile(s).");
-                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(header.SenderID, syncPacket, Compressors.CompressionType.GZip));
+                // Send uncompressed. A full-sync payload is small (0 profiles here) and far under the
+                // 4kb lobby-chat limit, and compression is the one thing CodeYapper 2.2.4's lazy-
+                // decompress getter can't round-trip (GZip/LZ4/ZStd -> StackOverflow on receive).
+                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(header.SenderID, syncPacket));
             } 
         }
         

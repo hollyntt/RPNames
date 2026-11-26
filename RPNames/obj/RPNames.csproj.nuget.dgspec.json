@@ -5,7 +5,7 @@
   },
   "projects": {
     "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj": {
-      "version": "1.6.0",
+      "version": "1.6.1",
       "restore": {
         "projectUniqueName": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
         "projectName": "RPNames",
@@ -27,7 +27,6 @@
         },
         "frameworks": {
           "netstandard2.1": {
-            "framework": "netstandard2.1",
             "targetAlias": "netstandard2.1",
             "projectReferences": {}
           }
@@ -46,7 +45,6 @@
       },
       "frameworks": {
         "netstandard2.1": {
-          "framework": "netstandard2.1",
           "targetAlias": "netstandard2.1",
           "dependencies": {
             "BepInEx.Analyzers": {
@@ -103,7 +101,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.113/RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.114/RuntimeIdentifierGraph.json"
         }
       }
     }

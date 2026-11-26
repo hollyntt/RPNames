@@ -188,7 +188,7 @@
           "lib/netstandard2.0/EasySettings.dll": {}
         }
       },
-      "Soggy_Pancake-CodeYapper/2.2.3": {
+      "Soggy_Pancake-CodeYapper/2.2.4": {
         "type": "package",
         "compile": {
           "lib/netstandard2.0/CodeTalker.dll": {}
@@ -945,14 +945,14 @@
         "nessie-easysettings.nuspec"
       ]
     },
-    "Soggy_Pancake-CodeYapper/2.2.3": {
-      "sha512": "QgvWXX0K4XIuCQplEyncpkkugDrIKC7uhNAXnh7VEeKmLv67jSl5bGWUTA4I2lu7zgtV0tvS8uG9onav0Y3tXw==",
+    "Soggy_Pancake-CodeYapper/2.2.4": {
+      "sha512": "EfTPqJSCz/YZJrLDeSY3gxLMuyI3fyquHcSFih23Ifs0I3AyQwmZFEKIXcrYMkeJMPaCnpCGq6PoD2ToROkKLQ==",
       "type": "package",
-      "path": "soggy_pancake-codeyapper/2.2.3",
+      "path": "soggy_pancake-codeyapper/2.2.4",
       "files": [
         ".nupkg.metadata",
         "lib/netstandard2.0/CodeTalker.dll",
-        "soggy_pancake-codeyapper.2.2.3.nupkg.sha512",
+        "soggy_pancake-codeyapper.2.2.4.nupkg.sha512",
         "soggy_pancake-codeyapper.nuspec"
       ]
     },
@@ -2852,7 +2852,7 @@
     "/home/hollyn/.nuget/packages/": {}
   },
   "project": {
-    "version": "1.6.0",
+    "version": "1.6.1",
     "restore": {
       "projectUniqueName": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
       "projectName": "RPNames",
@@ -2874,7 +2874,6 @@
       },
       "frameworks": {
         "netstandard2.1": {
-          "framework": "netstandard2.1",
           "targetAlias": "netstandard2.1",
           "projectReferences": {}
         }
@@ -2893,7 +2892,6 @@
     },
     "frameworks": {
       "netstandard2.1": {
-        "framework": "netstandard2.1",
         "targetAlias": "netstandard2.1",
         "dependencies": {
           "BepInEx.Analyzers": {
@@ -2950,7 +2948,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.113/RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.114/RuntimeIdentifierGraph.json"
       }
     }
   }
