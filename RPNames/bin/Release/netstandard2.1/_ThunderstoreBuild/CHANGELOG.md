@@ -1,4 +1,11 @@
 ## Changelog
+### 1.6.2 - x.x.x
+**Security:**
+- More network hardening against exploiters:
+  - Malformed/truncated packets (garbage string lengths, cut-off bodies, a `0xFFFFFFFF` profile count) are now dropped with a rate-limited warning instead of throwing inside the network pipeline.
+  - Network animation/color floats are now validated: NaN/Inf and out-of-range values from other players fall back to the defaults instead of making the per-frame loop spin or garble colors.
+  - The global nickname part of the HUD name label is now stripped of rich-text tags, same as Title/Pronouns.
+
 ### 1.6.1 - x.x.x
 **Fixed:**
 - Full-sync replies are no longer GZip-compressed. A 2.2.4 Codeyapper bug makes receiving a compressed binary packet stack-overflow (its lazy-decompress getter re-enters itself), which took the game down on lobby join. Sending uncompressed keeps the reply safe on every Codeyapper version.
@@ -8,6 +15,8 @@
   - Title/Pronoun text from other players is now stripped of TMP rich-text tags (and capped at 64 chars), so nobody can push `<size=...>`/`<font=...>` or similar into your HUD name labels.
   - Hex color fields from the network are validated; garbage falls back to a safe default instead of being able to break out of the color tag.
   - `MarqueeWidth` is clamped (1–64) and zero/negative animation speeds fall back to the default — a malicious value used to throw an exception every frame (and could allocate a multi-GB string).
+  - Network animation/color floats are now validated: NaN/Inf and out-of-range values from other players fall back to the defaults instead of making the per-frame loop spin or garble colors.
+  - Malformed/truncated packets (garbage string lengths, cut-off bodies, a `0xFFFFFFFF` profile count) are dropped with a rate-limited warning instead of throwing inside the network pipeline.
   - Full-sync payloads: the profile count is capped at 512 and only entries for players actually in the lobby are applied, and a full-sync is only accepted from the lobby owner — so a fake full-sync can't spoof or erase other players' titles or get echoed back lobby-wide by the host.
 
 ### 1.6.0 - x.x.x

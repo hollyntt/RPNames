@@ -126,7 +126,35 @@ namespace RPNames
             public UpdateTitleProfilePacket(CharacterTitleProfile profile) { Profile = profile; }
 
             public override byte[] Serialize() { using (var ms = new MemoryStream()) { using (var writer = new BinaryWriter(ms)) { ProfileSerializer.WriteProfile(writer, Profile); } return ms.ToArray(); } }
-            public override void Deserialize(byte[] data) { using (var ms = new MemoryStream(data)) { using (var reader = new BinaryReader(ms)) { Profile = ProfileSerializer.ReadProfile(reader); } } }
+
+            // Malformed bodies (truncated fields, garbage string lengths) must never reach the
+            // game: drop the packet, and rate-limit the warning so a spammer can't flood the log.
+            public override void Deserialize(byte[] data)
+            {
+                try
+                {
+                    using (var ms = new MemoryStream(data))
+                    using (var reader = new BinaryReader(ms))
+                        Profile = ProfileSerializer.ReadProfile(reader);
+                }
+                catch
+                {
+                    Profile = null;
+                    MalformedPacketLogger.Warn("UpdateTitleProfile");
+                }
+            }
+        }
+
+        internal static class MalformedPacketLogger
+        {
+            private static DateTime _lastWarn = DateTime.MinValue;
+            internal static void Warn(string packetName)
+            {
+                var now = DateTime.UtcNow;
+                if ((now - _lastWarn).TotalSeconds < 10) return;
+                _lastWarn = now;
+                Main.Log.LogWarning($"[RPNames] Dropped a malformed {packetName} packet from the network.");
+            }
         }
 
         public class FullSyncPacket : BinaryPacketBase
@@ -139,9 +167,31 @@ namespace RPNames
             public override byte[] Serialize() { using (var ms = new MemoryStream()) { using (var writer = new BinaryWriter(ms)) { writer.Write(AllProfiles.Count); foreach (var entry in AllProfiles) { writer.Write(entry.Key); ProfileSerializer.WriteProfile(writer, entry.Value); } } return ms.ToArray(); } }
             // count comes from the sender: a negative value used to throw in the Dictionary
             // constructor and duplicate keys threw on Add, both inside the receive pipeline.
-            // Cap it at a realistic lobby size and last-write-wins on duplicates.
+            // Cap it at a realistic lobby size, last-write-wins on duplicates, and drop the
+            // whole packet if the body is truncated (a 0xFFFF 0xFFFF 0xFFFF 0xFFFF count with
+            // one real entry used to throw EndOfStreamException mid-loop).
             private const int MaxProfiles = 512;
-            public override void Deserialize(byte[] data) { using (var ms = new MemoryStream(data)) { using (var reader = new BinaryReader(ms)) { int count = reader.ReadInt32(); AllProfiles = new Dictionary<uint, CharacterTitleProfile>(); for (int i = 0; i < count && i < MaxProfiles; i++) { uint netId = reader.ReadUInt32(); AllProfiles[netId] = ProfileSerializer.ReadProfile(reader); } } } }
+            public override void Deserialize(byte[] data)
+            {
+                try
+                {
+                    using var ms = new MemoryStream(data);
+                    using var reader = new BinaryReader(ms);
+                    int count = reader.ReadInt32();
+                    var profiles = new Dictionary<uint, CharacterTitleProfile>();
+                    for (int i = 0; i < count && i < MaxProfiles; i++)
+                    {
+                        uint netId = reader.ReadUInt32();
+                        profiles[netId] = ProfileSerializer.ReadProfile(reader);
+                    }
+                    AllProfiles = profiles;
+                }
+                catch
+                {
+                    AllProfiles = null;
+                    MalformedPacketLogger.Warn("FullSyncPacket");
+                }
+            }
         }
 
         public class RequestAllTitlesPacket : PacketBase { public override string PacketSourceGUID => ModInfo.GUID; }
@@ -671,7 +721,7 @@ namespace RPNames
         
         public static void OnProfileUpdate(PacketHeader header, BinaryPacketBase packet)
         {
-            if (packet is Packets.UpdateTitleProfilePacket p)
+            if (packet is Packets.UpdateTitleProfilePacket p && p.Profile != null)
             {
                 Player sender = FindObjectsOfType<Player>().FirstOrDefault(x => x._steamID == header.SenderID.ToString());
                 if (sender != null)
@@ -688,7 +738,9 @@ namespace RPNames
         {
             if (packet is Packets.FullSyncPacket p)
             {
-                Log.LogInfo($"[RPNames] Received full-sync with {p.AllProfiles?.Count ?? 0} profile(s).");
+                if (p.AllProfiles == null)
+                    return; // malformed packet already dropped in Deserialize
+                Log.LogInfo($"[RPNames] Received full-sync with {p.AllProfiles.Count} profile(s).");
                 try
                 {
                     if (!header.SenderIsLobbyOwner)
@@ -713,7 +765,7 @@ namespace RPNames
         // animation loop and TMP label never see raw attacker values after this.
         private static readonly Regex _tagStrip = new Regex("<[^>]*>", RegexOptions.Compiled);
         private static readonly Regex _hexColor = new Regex(@"^[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
-        private static string SanitizeDisplayText(string s)
+        internal static string SanitizeDisplayText(string s)
         {
             // Strip TMP rich-text tags (a lobby mate's Title/Pronouns render with richText on)
             // and cap length so a 4kb packet can't build an enormous per-frame string.
@@ -730,6 +782,12 @@ namespace RPNames
             return _hexColor.IsMatch(s) ? s : fallback;
         }
 
+        // A network ReadSingle can be NaN/Inf/zero/negative; those won't throw but they make the
+        // per-frame animation loop spin or emit garbage colors. Replace non-finite values with a
+        // fallback and clamp to a sane range.
+        private static float SanitizeFloat(float v, float fallback, float min, float max)
+            => float.IsNaN(v) || float.IsInfinity(v) ? fallback : Mathf.Clamp(v, min, max);
+
         private static void ApplyProfileUpdate(uint netId, CharacterTitleProfile profile)
         {
             if (profile != null)
@@ -739,7 +797,13 @@ namespace RPNames
                 // Negative width threw every frame in Update()/GetAnimatedText, and int.MaxValue
                 // would allocate a multi-GB string. The UI slider max is 40, so clamp to a sane range.
                 profile.MarqueeWidth = Mathf.Clamp(profile.MarqueeWidth, 1, 64);
-                if (profile.AnimationSpeed <= 0f) profile.AnimationSpeed = 0.25f; // zero/negative timer threshold made the animation tick every frame forever
+                profile.AnimationSpeed = SanitizeFloat(profile.AnimationSpeed, 0.25f, 0.05f, 10f);
+                profile.GradientSpread = SanitizeFloat(profile.GradientSpread, 10f, 0.01f, 100f);
+                profile.RainbowWaveSpread = SanitizeFloat(profile.RainbowWaveSpread, 15f, 0.01f, 100f);
+                profile.ColorAnimationSpeed = SanitizeFloat(profile.ColorAnimationSpeed, 1f, 0f, 10f);
+                profile.PronounGradientSpread = SanitizeFloat(profile.PronounGradientSpread, 10f, 0.01f, 100f);
+                profile.PronounRainbowWaveSpread = SanitizeFloat(profile.PronounRainbowWaveSpread, 15f, 0.01f, 100f);
+                profile.PronounColorAnimationSpeed = SanitizeFloat(profile.PronounColorAnimationSpeed, 1f, 0f, 10f);
                 profile.SingleHexColor = SanitizeHexColor(profile.SingleHexColor, "FFFFFF");
                 profile.GradientStartColor = SanitizeHexColor(profile.GradientStartColor, "FF0000");
                 profile.GradientEndColor = SanitizeHexColor(profile.GradientEndColor, "0000FF");
@@ -1227,7 +1291,7 @@ namespace RPNames
                 else if (hasTitle) titleAndPronounsPart = formattedTitle;
                 else if (hasPronouns) titleAndPronounsPart = formattedPronouns;
                 
-                string globalNamePart = !string.IsNullOrEmpty(__instance._globalNickname) ? "@" + __instance._globalNickname : (hasTitle || hasPronouns ? "@." : "");
+                string globalNamePart = !string.IsNullOrEmpty(__instance._globalNickname) ? "@" + Main.SanitizeDisplayText(__instance._globalNickname) : (hasTitle || hasPronouns ? "@." : "");
                 string prefix = playerProfile.AddGapAboveTitle && playerProfile.TitleOnNewLine ? "\n" : "";
                 string separator = playerProfile.TitleOnNewLine ? "\n" : " ";
                 
