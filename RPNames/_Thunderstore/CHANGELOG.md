@@ -1,8 +1,13 @@
 ## Changelog
+### 1.6.7 - x.x.x
+**Improved:**
+- The glyph fix from 1.6.6 now also NFKC-normalizes Steam names before stripping: fullwidth/halfwidth compatibility characters fold to the ordinary glyphs the game font ships (U+FF13 ３ → "3", ideographic space U+3000 → space, …). A name like "s0apy３" reads "s0apy3" instead of silently losing the "3".
+
 ### 1.6.6 - x.x.x
 **Fixed:**
-- Stopped the "The character with Unicode value … was not found in the terminal-grotesque font asset" console spam for anyone whose Steam persona name (or a lobby-mate's, via the global-nickname labels) contains characters the game's font chain can't draw. RPNames now builds the supported-charset from the nickname labels' font + fallback assets and trims unrenderable characters out of Steam names *before* they're written into the nickname field / player labels — the label only ever sees text it can draw, so TMP never logs the missing-glyph warning again.
-  - When the labels aren't up yet the charset is unknown and names pass through unstripped (a slightly wrong name is never worse than a broken one); the existing 1s refresh rewrites the nickname as soon as the charset is known.
+- Stopped the "The character with Unicode value … was not found in the terminal-grotesque font asset" console spam for anyone whose Steam persona name (or a lobby-mate's, via the global-nickname labels) contains characters the game's font chain can't draw. RPNames now trims such characters out of Steam names *before* they're written into the nickname field / player labels — the label only ever sees text it can draw, so TMP never logs the missing-glyph warning again.
+  - The supported charset is built from the nickname labels' font + fallback chain (each font's serialized character table, re-checked every 5s until found).
+  - When no label is up yet the charset is unknown and no stripping happens (a slightly wrong name is never worse than a broken one); the existing 1s refresh rewrites the nickname once the charset is known.
   - Surrogate pairs (e.g. emoji in a persona name) are kept only when the font chain can actually render them.
 
 ### 1.6.5 - x.x.x

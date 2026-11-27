@@ -682,8 +682,15 @@ namespace RPNames
         private static readonly GlyphSupport _glyphSupport = new GlyphSupport();
         private static string StripUnrenderable(string? name)
         {
+            if (string.IsNullOrEmpty(name))
+                return name ?? "";
             _glyphSupport.Refresh();
-            return _glyphSupport.Strip(name);
+            // NFKC folds fullwidth/halfwidth compatibility characters down to the plain
+            // characters the game font actually ships (U+FF13 '３' -> '3', U+3000 -> space,
+            // U+2160 -> 'I' ...). Names read the same instead of losing whole characters;
+            // anything still unrenderable afterwards is removed by the charset strip below.
+            string normalized = name.Normalize(NormalizationForm.FormKC);
+            return _glyphSupport.Strip(normalized);
         }
 
         internal sealed class GlyphSupport
