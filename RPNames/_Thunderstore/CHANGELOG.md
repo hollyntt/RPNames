@@ -1,4 +1,9 @@
 ## Changelog
+### 1.6.4 - x.x.x
+**Build / Compatibility:**
+- Migrated off the two CodeYapper APIs the 2.2.4 update marked obsolete (`RegisterBinaryListener` -> `RegisterListener`, `SendNetworkPacket(x)` -> `SendNetworkPacket(x, default)`). Behavior is unchanged: the `default` overload still sends uncompressed, and the new `RegisterListener<T>` overload takes the same handler signature the old one did. This clears the obsolete-call warnings the update introduced and keeps the build clean under warnings-as-errors / IDE escalation settings.
+- Cleaned up the remaining nullable warnings the 1.6.3 `CodeYapperWorkaround` guard introduced, returning the project to its pre-update warning baseline. No functional changes.
+
 ### 1.6.3 - x.x.x
 **Security / Stability:**
 - Guarded the silent force-close that started with the CodeYapper 2.2.4 update. That update ships a broken `PacketWrapper.PacketBytes` getter that reads itself and stack-overflows (no crash log, no popup) whenever a GZip/LZ4/ZStd-compressed packet is *received* — so an exploiter can just send one compressed packet to kill the host. RPNames now installs a version-gated guard on that getter that pre-decompresses and stops the recursion, so receiving a compressed packet degrades to a dropped packet instead of a silent game-closing.

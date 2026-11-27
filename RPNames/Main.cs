@@ -282,8 +282,8 @@ namespace RPNames
             if (Type.GetType("CodeTalker.Networking.CodeTalkerNetwork, CodeTalker") != null)
             {
                 _isCodeTalkerLoaded = true;
-                CodeTalkerNetwork.RegisterBinaryListener<Packets.UpdateTitleProfilePacket>(OnProfileUpdate);
-                CodeTalkerNetwork.RegisterBinaryListener<Packets.FullSyncPacket>(OnFullSync);
+                CodeTalkerNetwork.RegisterListener<Packets.UpdateTitleProfilePacket>(OnProfileUpdate);
+                CodeTalkerNetwork.RegisterListener<Packets.FullSyncPacket>(OnFullSync);
                 CodeTalkerNetwork.RegisterListener<Packets.RequestAllTitlesPacket>(OnSyncRequest);
             }
             // EasySettings is optional: if the dll is missing the call throws here and we just skip the page
@@ -875,7 +875,7 @@ namespace RPNames
         { 
             if (Player._mainPlayer == null) return;
             var packet = new Packets.UpdateTitleProfilePacket(profile);
-            if (TrySend(() => CodeTalkerNetwork.SendNetworkPacket(packet)))
+            if (TrySend(() => CodeTalkerNetwork.SendNetworkPacket(packet, default)))
                 ApplyProfileUpdate(Player._mainPlayer.netId, profile);
         }
         
@@ -884,7 +884,7 @@ namespace RPNames
             if (_isCodeTalkerLoaded && !_networkSendWarningLogged) 
             {
                 Log.LogInfo("[RPNames] Sending full-sync request to server.");
-                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket()));
+                TrySend(() => CodeTalkerNetwork.SendNetworkPacket(new Packets.RequestAllTitlesPacket(), default));
             }
         }
 
@@ -1199,11 +1199,11 @@ namespace RPNames
     // graceful packet-drop in RPNames' malformed-packet handling instead of a hard crash.
     internal static class CodeYapperWorkaround
     {
-        private static FieldInfo _compressed, _bytes, _compression;
-        private static Type _compressionEnum;
-        private static MethodInfo _decompress;
+        private static FieldInfo? _compressed, _bytes, _compression;
+        private static Type? _compressionEnum;
+        private static MethodInfo? _decompress;
         private static int _levelArity;
-        private static object _levelDefault;
+        private static object? _levelDefault;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Apply(Harmony harmony)
@@ -1228,34 +1228,40 @@ namespace RPNames
                 if (wrapper == null)
                     return;
 
-                _compressed = GetField(wrapper, "isCompressed");
-                _bytes = GetField(wrapper, "_PacketBytes");
-                _compression = GetField(wrapper, "compression");
-                if (_compressed == null || _bytes == null || _compression == null)
+                var compressed = GetField(wrapper, "isCompressed");
+                var bytes = GetField(wrapper, "_PacketBytes");
+                var compression = GetField(wrapper, "compression");
+                if (compressed == null || bytes == null || compression == null)
                     return;
+                _compressed = compressed;
+                _bytes = bytes;
+                _compression = compression;
 
-                _compressionEnum = _compression.FieldType;
-                _decompress = FindDecompress(wrapper.Assembly, _compressionEnum);
-                if (_decompress == null)
+                var compressionEnum = compression.FieldType;
+                _compressionEnum = compressionEnum;
+                var decompress = FindDecompress(wrapper.Assembly, compressionEnum);
+                if (decompress == null)
                 {
                     Main.Log.LogWarning("[RPNames] CodeYapper Decompress signature not found, leaving the broken getter untouched.");
                     return;
                 }
+                _decompress = decompress;
 
                 // Resolve the optional CompressionLevel default once, ahead of any packet traffic.
-                var parameters = _decompress.GetParameters();
+                var parameters = decompress.GetParameters();
                 _levelArity = parameters.Length;
                 if (_levelArity > 2)
                 {
                     var levelParam = parameters[2];
-                    _levelDefault = levelParam.IsOptional
+                    var levelDefault = levelParam.IsOptional
                         ? levelParam.DefaultValue
                         : Enum.GetValues(levelParam.ParameterType).GetValue(0);
-                    if (_levelDefault == null)
+                    if (levelDefault == null)
                     {
                         Main.Log.LogWarning("[RPNames] CodeYapper CompressionLevel default unknown, leaving the broken getter untouched.");
                         return;
                     }
+                    _levelDefault = levelDefault;
                 }
 
                 var target = wrapper.GetMethod("get_PacketBytes",
@@ -1272,10 +1278,10 @@ namespace RPNames
             }
         }
 
-        private static FieldInfo GetField(Type type, string name)
+        private static FieldInfo? GetField(Type type, string name)
             => type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-        private static MethodInfo FindDecompress(Assembly asm, Type compressionEnum)
+        private static MethodInfo? FindDecompress(Assembly asm, Type compressionEnum)
         {
             var compressors = asm.GetType("CodeTalker.Compressors", false);
             if (compressors == null)
@@ -1300,32 +1306,41 @@ namespace RPNames
         // network pipeline.
         private static void Prefix(object __instance)
         {
+            var compressedField = _compressed;
+            var bytesField = _bytes;
+            var compressionField = _compression;
+            var decompressMethod = _decompress;
+            if (compressedField == null || bytesField == null || compressionField == null)
+                return;
+
             try
             {
                 // Only the compressed, non-None cases can recurse. None already has the flag
                 // clear and takes the getter's safe fast path; we just get out of its way.
-                if (!(_compressed.GetValue(__instance) is bool compressed) || !compressed)
+                if (!(compressedField.GetValue(__instance) is bool compressed) || !compressed)
                     return;
 
                 // Brotli is intentionally disabled by the library for a decoder CVE and has its
                 // own safe branch (it logs and returns an empty payload). Leave that alone.
-                string mode = _compression.GetValue(__instance)?.ToString() ?? "";
+                string mode = compressionField.GetValue(__instance)?.ToString() ?? "";
                 if (mode == "Brotli" || mode == "None")
                     return;
 
                 // GZip / LZ4 / ZStd: the recursive case. Decompress in place from the raw field
                 // and clear the flag so the original getter returns on its safe path instead of
                 // reading itself forever.
-                byte[] raw = _bytes.GetValue(__instance) as byte[];
-                byte[] result = raw;
-                if (raw != null)
+                object? raw = bytesField.GetValue(__instance);
+                byte[] result = raw as byte[] ?? Array.Empty<byte>();
+                if (raw != null && decompressMethod != null)
                 {
                     try
                     {
                         object[] args = _levelArity > 2
-                            ? new object[] { raw, _compression.GetValue(__instance), _levelDefault }
-                            : new object[] { raw, _compression.GetValue(__instance) };
-                        result = (byte[])_decompress.Invoke(null, args);
+                            ? new object[] { raw, compressionField.GetValue(__instance), _levelDefault! }
+                            : new object[] { raw, compressionField.GetValue(__instance) };
+                        object? decompressed = decompressMethod.Invoke(null, args);
+                        if (decompressed is byte[] decoded)
+                            result = decoded;
                     }
                     catch
                     {
@@ -1334,14 +1349,14 @@ namespace RPNames
                     }
                 }
 
-                _bytes.SetValue(__instance, result);
-                _compressed.SetValue(__instance, false);
+                bytesField.SetValue(__instance, result);
+                compressedField.SetValue(__instance, false);
             }
             catch
             {
                 // Last resort: clear the flag so the original getter can't recurse even if the
                 // payload is left raw.
-                try { _compressed.SetValue(__instance, false); } catch { }
+                try { compressedField.SetValue(__instance, false); } catch { }
             }
         }
     }
