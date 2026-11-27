@@ -1,4 +1,35 @@
 ## Changelog
+### 1.6.4 - x.x.x
+**Build / Compatibility:**
+- Migrated off the two CodeYapper APIs the 2.2.4 update marked obsolete (`RegisterBinaryListener` -> `RegisterListener`, `SendNetworkPacket(x)` -> `SendNetworkPacket(x, default)`). Behavior is unchanged: the `default` overload still sends uncompressed, and the new `RegisterListener<T>` overload takes the same handler signature the old one did. This clears the obsolete-call warnings the update introduced and keeps the build clean under warnings-as-errors / IDE escalation settings.
+- Cleaned up the remaining nullable warnings the 1.6.3 `CodeYapperWorkaround` guard introduced, returning the project to its pre-update warning baseline. No functional changes.
+
+### 1.6.3 - x.x.x
+**Security / Stability:**
+- Guarded the silent force-close that started with the CodeYapper 2.2.4 update. That update ships a broken `PacketWrapper.PacketBytes` getter that reads itself and stack-overflows (no crash log, no popup) whenever a GZip/LZ4/ZStd-compressed packet is *received* — so an exploiter can just send one compressed packet to kill the host. RPNames now installs a version-gated guard on that getter that pre-decompresses and stops the recursion, so receiving a compressed packet degrades to a dropped packet instead of a silent game-closing.
+  - Targets only the broken 2.2.4 build; it's a no-op on 2.2.3 and on any future CodeYapper version that Soggy ships with the real fix, so it won't fight the official fix.
+  - Also stops RPNames from ever sending compressed packets (full-sync replies are now uncompressed), which was the other trigger.
+
+### 1.6.2 - x.x.x
+**Security:**
+- More network hardening against exploiters:
+  - Malformed/truncated packets (garbage string lengths, cut-off bodies, a `0xFFFFFFFF` profile count) are now dropped with a rate-limited warning instead of throwing inside the network pipeline.
+  - Network animation/color floats are now validated: NaN/Inf and out-of-range values from other players fall back to the defaults instead of making the per-frame loop spin or garble colors.
+  - The global nickname part of the HUD name label is now stripped of rich-text tags, same as Title/Pronouns.
+
+### 1.6.1 - x.x.x
+**Fixed:**
+- Full-sync replies are no longer GZip-compressed. A 2.2.4 Codeyapper bug makes receiving a compressed binary packet stack-overflow (its lazy-decompress getter re-enters itself), which took the game down on lobby join. Sending uncompressed keeps the reply safe on every Codeyapper version.
+
+**Security:**
+- Hardened the network input path so a lobby mate can't mess with your game:
+  - Title/Pronoun text from other players is now stripped of TMP rich-text tags (and capped at 64 chars), so nobody can push `<size=...>`/`<font=...>` or similar into your HUD name labels.
+  - Hex color fields from the network are validated; garbage falls back to a safe default instead of being able to break out of the color tag.
+  - `MarqueeWidth` is clamped (1–64) and zero/negative animation speeds fall back to the default — a malicious value used to throw an exception every frame (and could allocate a multi-GB string).
+  - Network animation/color floats are now validated: NaN/Inf and out-of-range values from other players fall back to the defaults instead of making the per-frame loop spin or garble colors.
+  - Malformed/truncated packets (garbage string lengths, cut-off bodies, a `0xFFFFFFFF` profile count) are dropped with a rate-limited warning instead of throwing inside the network pipeline.
+  - Full-sync payloads: the profile count is capped at 512 and only entries for players actually in the lobby are applied, and a full-sync is only accepted from the lobby owner — so a fake full-sync can't spoof or erase other players' titles or get echoed back lobby-wide by the host.
+
 ### 1.6.0 - x.x.x
 **Added:**
 - Titles are now saved per character through Multitool, so they follow the character instead of a slot number in the config. Multitool is a new dependency.
