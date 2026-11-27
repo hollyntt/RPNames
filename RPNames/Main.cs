@@ -696,33 +696,42 @@ namespace RPNames
         internal sealed class GlyphSupport
         {
             private HashSet<uint>? _supported;
-            private double _lastScanUtc;
+            private double _lastScanTime;
 
             public void Refresh()
             {
                 if (_supported != null)
                     return; // charset built; the label font chain is static per game
-                if (Time.unscaledTime - _lastScanUtc < 5d)
+                if (Time.unscaledTime - _lastScanTime < 5d)
                     return; // charset still unknown; don't rescan the scene more than every 5s
-                _lastScanUtc = Time.unscaledTime;
+                _lastScanTime = Time.unscaledTime;
 
-                // Any live nickname label works — the chain is the game-wide terminal-grotesque
-                // font. No player in the scene yet (main menu) means it's the character-select
-                // label we're about to fill.
-                TMP_FontAsset? main = null;
-                foreach (var player in FindObjectsOfType<Player>())
+                try
                 {
-                    if (player == null) continue;
-                    if (HarmonyPatches._globalNicknameTextMeshField.GetValue(player) is TextMeshPro { font: { } meshFont })
+                    // Any live nickname label works — the chain is the game-wide terminal-grotesque
+                    // font. No player in the scene yet (main menu) means it's the character-select
+                    // label we're about to fill.
+                    TMP_FontAsset? main = null;
+                    foreach (var player in FindObjectsOfType<Player>())
                     {
-                        main = meshFont;
-                        break;
+                        if (player == null) continue;
+                        if (HarmonyPatches._globalNicknameTextMeshField.GetValue(player) is TextMeshPro { font: { } meshFont })
+                        {
+                            main = meshFont;
+                            break;
+                        }
                     }
-                }
-                if (main == null)
-                    return; // nothing instantiated yet; the next scan retries
+                    if (main == null)
+                        return; // nothing instantiated yet; the next scan retries
 
-                _supported = BuildSupportedSet(main);
+                    _supported = BuildSupportedSet(main);
+                }
+                catch
+                {
+                    // The charset scan is best-effort and runs on the nickname-write path:
+                    // never let it throw into the caller (worst case = names unstripped,
+                    // exactly today's behavior, not worse).
+                }
             }
 
             private static HashSet<uint>? BuildSupportedSet(TMP_FontAsset main)

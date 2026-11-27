@@ -1,4 +1,8 @@
 ## Changelog
+### 1.6.8 - x.x.x
+**Stability:**
+- Made the glyph-charset scan fully defensive: it's best-effort and now fully exception-guarded, so it can never throw on the nickname-write path (worst case = names unstripped, i.e. today's behavior — never worse). No behavior change when everything's normal.
+
 ### 1.6.7 - x.x.x
 **Improved:**
 - The glyph fix from 1.6.6 now also NFKC-normalizes Steam names before stripping: fullwidth/halfwidth compatibility characters fold to the ordinary glyphs the game font ships (U+FF13 ３ → "3", ideographic space U+3000 → space, …). A name like "s0apy３" reads "s0apy3" instead of silently losing the "3".
