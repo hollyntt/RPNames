@@ -7,7 +7,7 @@
   "targets": {
     ".NETStandard,Version=v2.1": {},
     ".NETStandard,Version=v2.1/": {
-      "RPNames/1.6.2": {
+      "RPNames/1.6.3": {
         "dependencies": {
           "BepInEx.AssemblyPublicizer.MSBuild": "0.4.2",
           "BepInEx.Core": "5.4.21",
@@ -512,7 +512,7 @@
     }
   },
   "libraries": {
-    "RPNames/1.6.2": {
+    "RPNames/1.6.3": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

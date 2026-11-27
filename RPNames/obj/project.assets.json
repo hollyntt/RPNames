@@ -2852,7 +2852,7 @@
     "/home/hollyn/.nuget/packages/": {}
   },
   "project": {
-    "version": "1.6.2",
+    "version": "1.6.3",
     "restore": {
       "projectUniqueName": "/run/media/hollyn/The Main Dr/Documents/CODE/Ours/RoleplayTitles/RPNames/RPNames.csproj",
       "projectName": "RPNames",

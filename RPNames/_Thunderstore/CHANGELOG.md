@@ -1,4 +1,10 @@
 ## Changelog
+### 1.6.3 - x.x.x
+**Security / Stability:**
+- Guarded the silent force-close that started with the CodeYapper 2.2.4 update. That update ships a broken `PacketWrapper.PacketBytes` getter that reads itself and stack-overflows (no crash log, no popup) whenever a GZip/LZ4/ZStd-compressed packet is *received* — so an exploiter can just send one compressed packet to kill the host. RPNames now installs a version-gated guard on that getter that pre-decompresses and stops the recursion, so receiving a compressed packet degrades to a dropped packet instead of a silent game-closing.
+  - Targets only the broken 2.2.4 build; it's a no-op on 2.2.3 and on any future CodeYapper version that Soggy ships with the real fix, so it won't fight the official fix.
+  - Also stops RPNames from ever sending compressed packets (full-sync replies are now uncompressed), which was the other trigger.
+
 ### 1.6.2 - x.x.x
 **Security:**
 - More network hardening against exploiters:

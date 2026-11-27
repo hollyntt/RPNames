@@ -289,7 +289,11 @@ namespace RPNames
             // EasySettings is optional: if the dll is missing the call throws here and we just skip the page
             try { InitEasySettings(); }
             catch (Exception ex) { Log.LogInfo($"[RPNames] EasySettings not available, skipping the settings page ({ex.GetType().Name})"); }
-            Harmony.CreateAndPatchAll(typeof(HarmonyPatches));
+            var harmony = Harmony.CreateAndPatchAll(typeof(HarmonyPatches));
+            // CodeYapper 2.2.4's broken lazy-decompress getter stack-overflows on compressed
+            // packets; while the library is still in that shape, replace it with a working one.
+            if (_isCodeTalkerLoaded)
+                CodeYapperWorkaround.Apply(harmony);
             Log.LogInfo($"[{ModInfo.NAME} v{ModInfo.VERSION}] has loaded.");
         }
 
@@ -1182,6 +1186,166 @@ namespace RPNames
         }
     }
     
+    // CodeYapper 2.2.4 ships a broken PacketWrapper.PacketBytes getter: it decompresses via
+    // `Decompress(PacketBytes, ...)` - reading the property instead of the _PacketBytes field -
+    // and only clears isCompressed afterwards, so receiving a GZip/LZ4/ZStd compressed packet
+    // re-enters the getter forever and stack-overflows the whole game (silently, no crash log).
+    // An exploiter just has to hand a host one compressed packet to force-close it. While the
+    // library is still broken we install a Harmony prefix on the getter that pre-decompresses and
+    // clears the flag, so the recursive branch is never reached. It targets only the exact 2.2.4
+    // build (a no-op on 2.2.3 and on any future fixed version), arms only when every needed
+    // member is found (otherwise the getter is left exactly as the library shipped it), is
+    // flag-guarded (safe alongside other mods that patch the same getter), and degrades to a
+    // graceful packet-drop in RPNames' malformed-packet handling instead of a hard crash.
+    internal static class CodeYapperWorkaround
+    {
+        private static FieldInfo _compressed, _bytes, _compression;
+        private static Type _compressionEnum;
+        private static MethodInfo _decompress;
+        private static int _levelArity;
+        private static object _levelDefault;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Apply(Harmony harmony)
+        {
+            try
+            {
+                // CodeTalker is a soft dependency; if it's absent there's nothing to patch.
+                var networkType = Type.GetType("CodeTalker.Networking.CodeTalkerNetwork, CodeTalker");
+                if (networkType == null)
+                    return;
+
+                // Target only the 2.2.4 build that ships the recursive getter. 2.2.3 and older
+                // used a plain field (no bug), and a future 2.2.5+ with the real fix must stay
+                // untouched so this guard can't double-decompress. This makes the patch an
+                // automatic no-op everywhere except the broken version it was written for.
+                var version = networkType.Assembly.GetName().Version;
+                if (version?.Major != 2 || version?.Minor != 2 || version?.Build != 4)
+                    return;
+
+                // PacketWrapper is internal to CodeTalker; look it up by name.
+                var wrapper = networkType.Assembly.GetType("PacketWrapper", false);
+                if (wrapper == null)
+                    return;
+
+                _compressed = GetField(wrapper, "isCompressed");
+                _bytes = GetField(wrapper, "_PacketBytes");
+                _compression = GetField(wrapper, "compression");
+                if (_compressed == null || _bytes == null || _compression == null)
+                    return;
+
+                _compressionEnum = _compression.FieldType;
+                _decompress = FindDecompress(wrapper.Assembly, _compressionEnum);
+                if (_decompress == null)
+                {
+                    Main.Log.LogWarning("[RPNames] CodeYapper Decompress signature not found, leaving the broken getter untouched.");
+                    return;
+                }
+
+                // Resolve the optional CompressionLevel default once, ahead of any packet traffic.
+                var parameters = _decompress.GetParameters();
+                _levelArity = parameters.Length;
+                if (_levelArity > 2)
+                {
+                    var levelParam = parameters[2];
+                    _levelDefault = levelParam.IsOptional
+                        ? levelParam.DefaultValue
+                        : Enum.GetValues(levelParam.ParameterType).GetValue(0);
+                    if (_levelDefault == null)
+                    {
+                        Main.Log.LogWarning("[RPNames] CodeYapper CompressionLevel default unknown, leaving the broken getter untouched.");
+                        return;
+                    }
+                }
+
+                var target = wrapper.GetMethod("get_PacketBytes",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (target == null)
+                    return;
+
+                harmony.Patch(target, new HarmonyMethod(typeof(CodeYapperWorkaround), nameof(Prefix)));
+                Main.Log.LogInfo("[RPNames] Guarded the CodeYapper compressed-packet getter against the recursive stack overflow.");
+            }
+            catch (Exception ex)
+            {
+                Main.Log.LogWarning($"[RPNames] Could not guard the CodeYapper getter: {ex.Message}");
+            }
+        }
+
+        private static FieldInfo GetField(Type type, string name)
+            => type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+        private static MethodInfo FindDecompress(Assembly asm, Type compressionEnum)
+        {
+            var compressors = asm.GetType("CodeTalker.Compressors", false);
+            if (compressors == null)
+                return null;
+            foreach (var m in compressors.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (m.Name != "Decompress" || m.ReturnType != typeof(byte[]))
+                    continue;
+                var p = m.GetParameters();
+                if (p.Length >= 2 && p[0].ParameterType == typeof(byte[]) && p[1].ParameterType == compressionEnum
+                    && (p.Length == 2 || p[2].IsOptional))
+                    return m;
+            }
+            return null;
+        }
+
+        // Runs before get_PacketBytes. If the wrapper still holds a compressed payload we
+        // decompress it in place and clear the flag, so the original getter takes its safe
+        // non-recursive path instead of reading itself forever. Everything is best-effort and
+        // fully caught: the worst outcome is leaving the raw bytes in place (which RPNames'
+        // malformed-packet guards drop later), never letting an exception escape into the
+        // network pipeline.
+        private static void Prefix(object __instance)
+        {
+            try
+            {
+                // Only the compressed, non-None cases can recurse. None already has the flag
+                // clear and takes the getter's safe fast path; we just get out of its way.
+                if (!(_compressed.GetValue(__instance) is bool compressed) || !compressed)
+                    return;
+
+                // Brotli is intentionally disabled by the library for a decoder CVE and has its
+                // own safe branch (it logs and returns an empty payload). Leave that alone.
+                string mode = _compression.GetValue(__instance)?.ToString() ?? "";
+                if (mode == "Brotli" || mode == "None")
+                    return;
+
+                // GZip / LZ4 / ZStd: the recursive case. Decompress in place from the raw field
+                // and clear the flag so the original getter returns on its safe path instead of
+                // reading itself forever.
+                byte[] raw = _bytes.GetValue(__instance) as byte[];
+                byte[] result = raw;
+                if (raw != null)
+                {
+                    try
+                    {
+                        object[] args = _levelArity > 2
+                            ? new object[] { raw, _compression.GetValue(__instance), _levelDefault }
+                            : new object[] { raw, _compression.GetValue(__instance) };
+                        result = (byte[])_decompress.Invoke(null, args);
+                    }
+                    catch
+                    {
+                        // Undecodable payload: keep the raw data; RPNames' malformed-packet guards
+                        // drop it later instead of the game dying.
+                    }
+                }
+
+                _bytes.SetValue(__instance, result);
+                _compressed.SetValue(__instance, false);
+            }
+            catch
+            {
+                // Last resort: clear the flag so the original getter can't recurse even if the
+                // payload is left raw.
+                try { _compressed.SetValue(__instance, false); } catch { }
+            }
+        }
+    }
+
     // Separate classes so Multitool / EasySettings types only load when those mods are installed
     internal static class MultitoolHook
     {
