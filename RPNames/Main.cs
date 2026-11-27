@@ -755,8 +755,12 @@ namespace RPNames
                 }
                 catch
                 {
-                    // Owner unknown (lobby torn down / handle invalid) — fall through to the
-                    // NetID filter instead of dropping a legitimate host response.
+                    // Owner unknown (lobby torn down / handle not yet valid) — fail CLOSED and drop
+                    // the payload: an unverified sender must not be able to apply titles while the
+                    // lookup can't run. Legit full-syncs are on-demand, so the requestor can simply
+                    // ask again once the lobby handle is valid.
+                    Log.LogInfo($"[RPNames] Dropping full-sync from {header.SenderID}: could not verify lobby ownership.");
+                    return;
                 }
                 var activeNetIds = new HashSet<uint>(FindObjectsOfType<Player>().Select(x => x.netId));
                 var localNetIds = HarmonyPatches.PlayerProfiles.Keys.ToList();

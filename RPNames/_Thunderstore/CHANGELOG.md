@@ -1,4 +1,8 @@
 ## Changelog
+### 1.6.5 - x.x.x
+**Security:**
+- Closed the fail-open owner gate on full-sync (found by a community exploiter tool). When the lobby-owner lookup couldn't run (lobby handle not yet valid, torn-down window, post-kick), 1.6.1–1.6.4 fell through to applying the payload from any sender; now those packets are dropped instead. Legit full-syncs are on-demand, so the requester simply re-asks once the lobby is up — no permanent loss.
+
 ### 1.6.4 - x.x.x
 **Build / Compatibility:**
 - Migrated off the two CodeYapper APIs the 2.2.4 update marked obsolete (`RegisterBinaryListener` -> `RegisterListener`, `SendNetworkPacket(x)` -> `SendNetworkPacket(x, default)`). Behavior is unchanged: the `default` overload still sends uncompressed, and the new `RegisterListener<T>` overload takes the same handler signature the old one did. This clears the obsolete-call warnings the update introduced and keeps the build clean under warnings-as-errors / IDE escalation settings.
