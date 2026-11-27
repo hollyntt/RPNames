@@ -1,7 +1,13 @@
 ## Changelog
+### 1.6.6 - x.x.x
+**Fixed:**
+- Stopped the "The character with Unicode value … was not found in the terminal-grotesque font asset" console spam for anyone whose Steam persona name (or a lobby-mate's, via the global-nickname labels) contains characters the game's font chain can't draw. RPNames now builds the supported-charset from the nickname labels' font + fallback assets and trims unrenderable characters out of Steam names *before* they're written into the nickname field / player labels — the label only ever sees text it can draw, so TMP never logs the missing-glyph warning again.
+  - When the labels aren't up yet the charset is unknown and names pass through unstripped (a slightly wrong name is never worse than a broken one); the existing 1s refresh rewrites the nickname as soon as the charset is known.
+  - Surrogate pairs (e.g. emoji in a persona name) are kept only when the font chain can actually render them.
+
 ### 1.6.5 - x.x.x
 **Security:**
-- Closed the fail-open owner gate on full-sync (found by a community exploiter tool). When the lobby-owner lookup couldn't run (lobby handle not yet valid, torn-down window, post-kick), 1.6.1–1.6.4 fell through to applying the payload from any sender; now those packets are dropped instead. Legit full-syncs are on-demand, so the requester simply re-asks once the lobby is up — no permanent loss.
+- Closed the fail-open owner gate on full-sync (found on a decomp of a public tool named "plvwsmvwvre"). When the lobby-owner lookup couldn't run (lobby handle not yet valid, torn-down window, post-kick), 1.6.1–1.6.4 fell through to applying the payload from any sender; now those packets are dropped instead. Legit full-syncs are on-demand, so the requester simply re-asks once the lobby is up — no permanent loss.
 
 ### 1.6.4 - x.x.x
 **Build / Compatibility:**

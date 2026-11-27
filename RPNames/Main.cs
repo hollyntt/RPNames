@@ -652,7 +652,7 @@ namespace RPNames
             if (!SteamManager.Initialized)
                 return null;
 
-            return Steamworks.SteamFriends.GetPersonaName();
+            return StripUnrenderable(Steamworks.SteamFriends.GetPersonaName());
         }
 
         private string? GetSteamName(ulong steamId)
@@ -670,7 +670,125 @@ namespace RPNames
                 return null;
             }
 
-            return name;
+            return StripUnrenderable(name);
+        }
+
+        // ===== Glyph support: strip Steam names down to characters the nickname labels can render =====
+        // The global-nickname labels are TMP with the game's terminal-grotesque font; a persona name
+        // containing characters outside that font chain (e.g. fullwidth digits) makes TMP log a
+        // "Unicode value 0x… was not found in the font asset or any potential fallbacks" warning on
+        // every re-render, forever. Persona names are the only text RPNames injects into those
+        // labels, so strip unrenderable characters at the source — the two getters above.
+        private static readonly GlyphSupport _glyphSupport = new GlyphSupport();
+        private static string StripUnrenderable(string? name)
+        {
+            _glyphSupport.Refresh();
+            return _glyphSupport.Strip(name);
+        }
+
+        internal sealed class GlyphSupport
+        {
+            private HashSet<uint>? _supported;
+            private double _lastScanUtc;
+
+            public void Refresh()
+            {
+                if (_supported != null)
+                    return; // charset built; the label font chain is static per game
+                if (Time.unscaledTime - _lastScanUtc < 5d)
+                    return; // charset still unknown; don't rescan the scene more than every 5s
+                _lastScanUtc = Time.unscaledTime;
+
+                // Any live nickname label works — the chain is the game-wide terminal-grotesque
+                // font. No player in the scene yet (main menu) means it's the character-select
+                // label we're about to fill.
+                TMP_FontAsset? main = null;
+                foreach (var player in FindObjectsOfType<Player>())
+                {
+                    if (player == null) continue;
+                    if (HarmonyPatches._globalNicknameTextMeshField.GetValue(player) is TextMeshPro { font: { } meshFont })
+                    {
+                        main = meshFont;
+                        break;
+                    }
+                }
+                if (main == null)
+                    return; // nothing instantiated yet; the next scan retries
+
+                _supported = BuildSupportedSet(main);
+            }
+
+            private static HashSet<uint>? BuildSupportedSet(TMP_FontAsset main)
+            {
+                var supported = new HashSet<uint>();
+                var chain = new List<TMP_FontAsset> { main };
+                List<TMP_FontAsset>? fallbacks = main.fallbackFontAssetTable;
+                if (fallbacks != null)
+                {
+                    foreach (var fallback in fallbacks)
+                        if (fallback != null && fallback != main)
+                            chain.Add(fallback);
+                }
+                foreach (var font in chain)
+                {
+                    // characterTable is the serialized, authoritative list (the lookup
+                    // dictionary is populated lazily by TMP and can still be empty). It
+                    // holds only characters, so every entry's code point is renderable.
+                    if (font?.characterTable == null)
+                        continue;
+                    foreach (var entry in font.characterTable)
+                        if (entry != null)
+                            supported.Add(entry.unicode);
+                }
+                // No usable charset found yet: keep it null so we never strip on an incomplete set.
+                return supported.Count > 0 ? supported : null;
+            }
+
+            public string Strip(string? name)
+            {
+                if (string.IsNullOrEmpty(name))
+                    return name ?? "";
+                if (_supported == null)
+                    return name; // unknown charset: never mangle a real name over an incomplete lookup
+
+                var builder = new StringBuilder(name.Length);
+                int i = 0;
+                while (i < name.Length)
+                {
+                    char c = name[i];
+                    if (char.IsHighSurrogate(c))
+                    {
+                        if (i + 1 < name.Length && char.IsLowSurrogate(name[i + 1]))
+                        {
+                            // A real pair; keep it only if the font chain can draw its code point.
+                            int code = char.ConvertToUtf32(c, name[i + 1]);
+                            if (_supported.Contains((uint)code))
+                            {
+                                builder.Append(c);
+                                builder.Append(name[i + 1]);
+                            }
+                            i += 2;
+                        }
+                        else
+                        {
+                            // Lone high surrogate: TMP would warn on this too; drop it.
+                            i += 1;
+                        }
+                    }
+                    else if (char.IsLowSurrogate(c))
+                    {
+                        // Lone low surrogate: drop it.
+                        i += 1;
+                    }
+                    else
+                    {
+                        if (_supported.Contains((uint)c))
+                            builder.Append(c);
+                        i += 1;
+                    }
+                }
+                return builder.ToString();
+            }
         }
 
         private void LogSteamNameUnavailableOnce(string message)
@@ -1385,7 +1503,7 @@ namespace RPNames
     {
         internal static readonly Dictionary<uint, CharacterTitleProfile> PlayerProfiles = new Dictionary<uint, CharacterTitleProfile>();
         internal static readonly Dictionary<uint, string> CurrentPlayerTitles = new Dictionary<uint, string>();
-        private static readonly FieldInfo _globalNicknameTextMeshField = AccessTools.Field(typeof(Player), "_globalNicknameTextMesh");
+        internal static readonly FieldInfo _globalNicknameTextMeshField = AccessTools.Field(typeof(Player), "_globalNicknameTextMesh");
 
         [HarmonyPostfix, HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Set_MenuCondition))]
         private static void OnSetMenuCondition_Postfix(MainMenuManager __instance)
