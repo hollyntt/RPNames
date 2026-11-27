@@ -1,18 +1,11 @@
 ## Changelog
-### 1.6.8 - x.x.x
-**Stability:**
-- Made the glyph-charset scan fully defensive: it's best-effort and now fully exception-guarded, so it can never throw on the nickname-write path (worst case = names unstripped, i.e. today's behavior — never worse). No behavior change when everything's normal.
-
-### 1.6.7 - x.x.x
-**Improved:**
-- The glyph fix from 1.6.6 now also NFKC-normalizes Steam names before stripping: fullwidth/halfwidth compatibility characters fold to the ordinary glyphs the game font ships (U+FF13 ３ → "3", ideographic space U+3000 → space, …). A name like "s0apy３" reads "s0apy3" instead of silently losing the "3".
-
 ### 1.6.6 - x.x.x
 **Fixed:**
-- Stopped the "The character with Unicode value … was not found in the terminal-grotesque font asset" console spam for anyone whose Steam persona name (or a lobby-mate's, via the global-nickname labels) contains characters the game's font chain can't draw. RPNames now trims such characters out of Steam names *before* they're written into the nickname field / player labels — the label only ever sees text it can draw, so TMP never logs the missing-glyph warning again.
-  - The supported charset is built from the nickname labels' font + fallback chain (each font's serialized character table, re-checked every 5s until found).
-  - When no label is up yet the charset is unknown and no stripping happens (a slightly wrong name is never worse than a broken one); the existing 1s refresh rewrites the nickname once the charset is known.
-  - Surrogate pairs (e.g. emoji in a persona name) are kept only when the font chain can actually render them.
+- Stopped the "The character with Unicode value … was not found in the [terminal-grotesque] font asset or any potential fallbacks" console spam. RPNames writes Steam persona names into the global-nickname labels, and any character the game's font chain can't render makes TMP re-log that warning on every re-render. Persona names are now cleaned *before* they're written into the nickname field / player labels, so the labels only ever see text they can draw:
+  - NFKC normalization first: fullwidth/halfwidth compatibility characters fold down to the plain glyphs the font ships (U+FF13 ３ → "3", ideographic space U+3000 → space, …). A name like "s0apy３" reads "s0apy3" instead of silently losing the "3".
+  - Then a charset strip: the supported code points are built from the nickname labels' font + fallback chain (each font's serialized character table, re-checked every 5s until found), and anything outside it is removed. Surrogate pairs (e.g. emoji in a persona name) are kept only when the font chain can actually render them.
+  - When no label is up yet the charset is unknown and no stripping happens (a slightly wrong name is never worse than a broken one); the existing 1s nickname refresh rewrites the name as soon as the charset is known.
+  - The whole scan is best-effort and exception-guarded: it can never throw on the nickname-write path (worst case = the name passes through unstripped, i.e. today's behavior — never worse).
 
 ### 1.6.5 - x.x.x
 **Security:**
